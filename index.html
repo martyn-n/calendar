@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Date Range Extension (Settings-enabled)</title>
+  <style>
+    :root {
+      --w:236px; --h:180px; --gap:2px; --pad:4px; --r:8px;
+      --bg:#FAFAFA; --panel:#FFFFFF; --border:#E5E7EB;
+      --ink:#333333; --muted:#6B7280; --accent:#2563EB;
+      --range:#E0E7FF; --disabled:#9CA3AF;
+    }
+    html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .wrap { width:var(--w); height:var(--h); padding:var(--pad); box-sizing:border-box; }
+    .box { width:100%; height:100%; background:var(--panel); border:1px solid var(--border); border-radius:var(--r); padding:4px; box-sizing:border-box; display:flex; flex-direction:column; gap:2px; }
+    .head { display:flex; align-items:center; justify-content:space-between; gap:4px; }
+    .btn {
+      all:unset; cursor:pointer; padding:0 6px; height:20px; line-height:20px;
+      border-radius:6px; border:1px solid var(--border); background:#F3F4F6; color:var(--ink);
+      font-size:11px; white-space:nowrap; display:flex; align-items:center; justify-content:center; text-align:center;
+    }
+    .btn.icon { width:22px; padding:0; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .lbl { font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; text-align:center; }
+    .gear { all:unset; width:22px; height:20px; line-height:20px; border:1px solid var(--border); background:#F3F4F6; border-radius:6px; text-align:center; cursor:pointer; }
+    .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:var(--gap); }
+    #dow { padding-top:4px; }
+    .dow { font-size:10px; color:var(--muted); text-align:center; padding:2px 0; }
+    .cell {
+      position:relative; font-size:11px; text-align:center; line-height:18px; height:18px;
+      border-radius:6px; user-select:none; border:1px solid transparent; color:var(--ink);
+    }
+    .cell:hover { outline:2px solid rgba(37,99,235,.2); }
+    .cell.disabled { color: var(--disabled); pointer-events:none; outline:none; }
+    .in-range { background: var(--range); }
+    .start, .end { background: var(--accent); color:#fff; font-weight:700; }
+    .start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
+    .end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
+    .cell.today::after { content:''; position:absolute; inset:2px; border:1px dashed var(--accent); border-radius:5px; pointer-events:none; }
+    .foot { display:flex; gap:4px; justify-content:space-between; margin-top:0px; }
+    .foot .btn { flex:1; font-size:10px; height:20px; line-height:20px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="box">
+      <div class="head">
+        <button class="btn icon" id="prev">‹</button>
+        <div class="lbl" id="monthLabel"></div>
+        <button class="btn icon" id="next">›</button>
+        <button class="gear" id="cfg" title="Настройки" style="display:none">⚙︎</button>
+      </div>
+      <div class="grid" id="dow"></div>
+      <div class="grid" id="grid"></div>
+      <div class="foot" id="footBtns">
+        <button class="btn" id="btnToday">Сегодня</button>
+        <button class="btn" id="btnLast30">Последние 30 дней</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- loader ---
+    const loadScript = (src) => new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res(src); s.onerror=()=>rej(new Error('Fail '+src)); document.head.appendChild(s); });
+    async function ensureAPI(){
+      try{ await loadScript('./tableau.extensions.1.latest.js'); if (window.tableau && tableau.extensions) return; }catch(_){}
+      try{ await loadScript('https://tableau.github.io/extensions-api/lib/tableau.extensions.1.latest.js'); }catch(_){}
+    }
+
+    // --- defaults (overridable via settings) ---
+    const DEFAULTS = {
+      startParamName: 'StartDate',
+      endParamName:   'EndDate',
+      sheetName:      'dt_sheet',
+      fieldName:      'dt',
+      rangeParamName: 'MinMaxDate',
+      settingsParamName: '',
+      endParamName:   'EndDate',
+      sheetName:      'dt_sheet',
+      fieldName:      'dt',
+      showToday:      true,
+      showLast30:     true,
+      disableMonthNavOutside: true,
+      initialPreset:  'params', // 'params' | 'today' | 'last30'
+      locale:         'ru-RU',
+      monthLabelCase: 'capitalize', // or 'none'
+      styles: {
+        pageBg:  '#FAFAFA',
+        panelBg: '#FFFFFF',
+        text:    '#333333',
+        accent:  '#2563EB',
+        border:  '#E5E7EB'
+      },
+      buttonsMarginTopPx: 0
+    };
+
+    // --- helpers ---
+    const $ = (q)=>document.querySelector(q);
+    function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
+    function sameDay(a,b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+    function applyTheme(cfg){
+      document.documentElement.style.setProperty('--bg', cfg.styles.pageBg);
+      document.documentElement.style.setProperty('--panel', cfg.styles.panelBg);
+      document.documentElement.style.setProperty('--ink', cfg.styles.text);
+      document.documentElement.style.setProperty('--accent', cfg.styles.accent);
+      document.documentElement.style.setProperty('--border', cfg.styles.border);
+      document.querySelector('.foot').style.marginTop = (cfg.buttonsMarginTopPx||0) + 'px';
+    }
+    function getSettings(){
+      const raw = tableau.extensions.settings.get('cfg');
+      if (!raw) return {...DEFAULTS};
+      try { const j = JSON.parse(raw); return {...DEFAULTS, ...j, styles: {...DEFAULTS.styles, ...(j.styles||{})}}; }
+      catch { return {...DEFAULTS}; }
+    }
+    function setSettings(cfg){
+      tableau.extensions.settings.set('cfg', JSON.stringify(cfg));
+      return tableau.extensions.settings.saveAsync();
+    }
+
+    // --- core state ---
+    let CFG = {...DEFAULTS};
+    let startParam=null, endParam=null, startDate=null, endDate=null, allowMin=null, allowMax=null, viewYear, viewMonth;
+
+    function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+    function inAllowed(d){ const t=+clipNoon(d); if (allowMin && t<+allowMin) return false; if (allowMax && t>+allowMax) return false; return true; }
+    function clampToAllowed(d){ if (!d) return d; const x=clipNoon(d); if (allowMin && x<allowMin) return new Date(allowMin); if (allowMax && x>allowMax) return new Date(allowMax); return x; }
+    function monthNavAllowed(y,m){ if (!CFG.disableMonthNavOutside) return true; const s=clipNoon(new Date(y,m,1)), e=clipNoon(new Date(y,m+1,0)); if (allowMin && e<allowMin) return false; if (allowMax && s>allowMax) return false; return true; }
+
+    function buildDOW(){ const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const c=$('#dow'); c.innerHTML=''; days.forEach(x=>{ const e=document.createElement('div'); e.className='dow'; e.textContent=x; c.appendChild(e); }); }
+    function render(){
+      try {
+      const d1 = new Date(viewYear, viewMonth, 1);
+      let label = d1.toLocaleString(CFG.locale, {month:'long', year:'numeric'});
+      if (CFG.monthLabelCase==='capitalize') label = label.charAt(0).toUpperCase()+label.slice(1);
+      $('#monthLabel').textContent = label;
+
+      const grid=$('#grid'); if (!grid) return; grid.innerHTML='';
+      const offset = ((d1.getDay() || 7) - 1);
+      const days = daysInMonth(viewYear, viewMonth);
+      for(let i=0;i<offset;i++){ const x=document.createElement('div'); x.className='cell'; x.style.visibility='hidden'; grid.appendChild(x); }
+      const today = clipNoon(new Date());
+      for(let d=1; d<=days; d++){
+        const dt=clipNoon(new Date(viewYear, viewMonth, d));
+        const el=document.createElement('div'); el.className='cell'; el.textContent=d;
+        const disabled = !inAllowed(dt);
+        if (disabled) { el.classList.add('disabled'); el.setAttribute('aria-disabled','true'); }
+        if (sameDay(dt, today)) el.classList.add('today');
+        el.addEventListener('click', ()=>onPick(dt, disabled));
+        if (!disabled){
+          if (startDate && endDate){
+            const t=+dt, a=+startDate, b=+endDate;
+            if (t>a && t<b) el.classList.add('in-range');
+            if (t===a) el.classList.add('start');
+            if (t===b) el.classList.add('end');
+          } else if (startDate && +dt===+startDate) el.classList.add('start');
+        }
+        grid.appendChild(el);
+      }
+      // footer visibility
+      $('#btnToday').style.display = CFG.showToday ? 'flex' : 'none';
+      $('#btnLast30').style.display = CFG.showLast30 ? 'flex' : 'none';
+
+      // Disable prev/next if the whole target month is out of allowed range
+      const prevBtn = document.getElementById('prev');
+      const nextBtn = document.getElementById('next');
+      const prevY = viewYear + (viewMonth===0 ? -1 : 0);
+      const prevM = viewMonth===0 ? 11 : (viewMonth-1);
+      const nextY = viewYear + (viewMonth===11 ? 1 : 0);
+      const nextM = viewMonth===11 ? 0 : (viewMonth+1);
+      function monthAllowed(y,m){
+        const start=clipNoon(new Date(y,m,1));
+        const end=clipNoon(new Date(y,m+1,0));
+        return inAllowed(start) || inAllowed(end) || (allowMin && allowMax && start<=allowMax && end>=allowMin);
+      }
+      if (prevBtn) prevBtn.disabled = !monthAllowed(prevY, prevM);
+      if (nextBtn) nextBtn.disabled = !monthAllowed(nextY, nextM);
+      } catch (e) { console.error('Render failed', e); }
+
+
+      // prev/next
+      const prevBtn=$('#prev'), nextBtn=$('#next');
+      const prevY = viewYear + (viewMonth===0 ? -1 : 0);
+      const prevM = viewMonth===0 ? 11 : (viewMonth-1);
+      const nextY = viewYear + (viewMonth===11 ? 1 : 0);
+      const nextM = viewMonth===11 ? 0 : (viewMonth+1);
+      prevBtn.disabled = !monthNavAllowed(prevY, prevM);
+      nextBtn.disabled = !monthNavAllowed(nextY, nextM);
+    }
+    function normalize(){ if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate]; }
+
+    async function writeParams(){
+      if (!startParam || !endParam) return;
+      try{ if (startDate) await startParam.changeValueAsync(new Date(startDate)); if (endDate) await endParam.changeValueAsync(new Date(endDate)); }catch(_){}
+    }
+    function onPick(date, disabled){
+      if (disabled || !inAllowed(date)) return;
+      if (!startDate || (startDate && endDate)) { startDate=clipNoon(date); endDate=null; }
+      else { endDate=clipNoon(date); normalize(); }
+      render();
+      if (startDate && !endDate) { if (startParam) startParam.changeValueAsync(new Date(startDate)).catch(()=>{}); }
+      if (startDate && endDate) writeParams();
+    }
+
+    async function getRangeFromWorksheet(sheetName, fieldName){
+      try{
+        const dashboard = tableau.extensions.dashboardContent.dashboard;
+        const sheet = dashboard.worksheets.find(w => w.name === sheetName);
+        if (!sheet) return [null, null];
+        const data = await sheet.getSummaryDataAsync({ignoreSelection: true});
+        const idx = data.columns.findIndex(c => c.fieldName === fieldName || c.alias === fieldName);
+        if (idx === -1) return [null, null];
+        let min=null, max=null;
+        for (const row of data.data){
+          const v = row[idx].value;
+          if (!v) continue;
+          const raw = (v instanceof Date) ? v : new Date(v);
+          const d = clipNoon(raw);
+          if (isNaN(+d)) continue;
+          if (!min || d < min) min = d;
+          if (!max || d > max) max = d;
+        }
+        return [min, max];
+      } catch(e){ return [null, null]; }
+    }
+
+    // --- settings dialog ---
+    async function openSettings(){
+      const payload = JSON.stringify(CFG);
+      try{
+        const url = new URL(window.location.href);
+        url.pathname = url.pathname.replace(/[^\/]*$/, 'config.html');
+        const result = await tableau.extensions.ui.displayDialogAsync(url.toString(), payload, { height: 600, width: 420 });
+        const next = JSON.parse(result);
+        CFG = {...DEFAULTS, ...next, styles: {...DEFAULTS.styles, ...(next.styles||{})}};
+        await setSettings(CFG);
+        await writeConfigToParam(CFG.settingsParamName, CFG);
+        applyTheme(CFG);
+        render();
+      }catch(e){
+        if (e.errorCode && e.errorCode === tableau.ErrorCodes.DialogClosedByUser) { /* user canceled */ }
+      }
+    }
+
+    // --- init ---
+    async function initInsideTableau(){
+      CFG = getSettings();
+      const cfgFromParam = await readConfigFromParam(CFG.settingsParamName);
+      if (cfgFromParam) CFG = {...DEFAULTS, ...cfgFromParam, styles: {...DEFAULTS.styles, ...(cfgFromParam.styles||{})}};
+      applyTheme(CFG);
+
+      const params = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
+      startParam = params.find(p => p.name===CFG.startParamName);
+      endParam   = params.find(p => p.name===CFG.endParamName);
+
+      const [pLo, pHi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
+      if (pLo && pHi){ allowMin = pLo; allowMax = pHi; }
+      else {
+        const [wLo, wHi] = await getRangeFromWorksheet(CFG.sheetName, CFG.fieldName);
+        allowMin = wLo ? clipNoon(wLo) : null;
+        allowMax = wHi ? clipNoon(wHi) : null;
+      }
+
+      // initial values
+      if (CFG.initialPreset === 'today'){
+        const now = clipNoon(new Date());
+        startDate = clampToAllowed(now);
+        endDate   = clampToAllowed(now);
+      } else if (CFG.initialPreset === 'last30'){
+        const now = clipNoon(new Date());
+        startDate = clampToAllowed(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 12));
+        endDate   = clampToAllowed(now);
+      } else {
+        const minV = startParam?.currentValue?.value ? clipNoon(new Date(startParam.currentValue.value)) : null;
+        const maxV = endParam?.currentValue?.value ? clipNoon(new Date(endParam.currentValue.value)) : null;
+        startDate = clampToAllowed(minV);
+        endDate   = clampToAllowed(maxV);
+      }
+      normalize();
+
+      const base = startDate || endDate || (allowMin || clipNoon(new Date()));
+      viewYear=base.getFullYear(); viewMonth=base.getMonth();
+
+      // events
+      document.getElementById('cfg').addEventListener('click', openSettings);
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, (ev)=>{
+        CFG = getSettings(); applyTheme(CFG); render();
+      });
+
+      buildDOW(); render();
+    }
+
+    async function boot(){
+      await ensureAPI();
+      if (!(window.tableau && tableau.extensions)){
+        // local preview (outside Tableau): still allow opening settings to see UI
+        document.getElementById('cfg').addEventListener('click', ()=>alert('Откройте в Tableau, чтобы настраивать расширение.'));
+        const now=new Date(); viewYear=now.getFullYear(); viewMonth=now.getMonth(); buildDOW(); render(); return;
+      }
+      try{ await tableau.extensions.initializeAsync();
+        try{ const isAuthoring = tableau.extensions?.environment?.mode === tableau.ExtensionMode.Authoring;
+             const gear = document.getElementById('cfg'); if (gear) gear.style.display = isAuthoring ? 'block' : 'none'; }catch(_){}
+        await initInsideTableau(); }catch(e){ console.error(e); }
+    }
+
+    document.addEventListener('click', async (e)=>{
+      if (e.target.id==='prev'){
+        const y = viewYear + (viewMonth===0 ? -1 : 0);
+        const m = viewMonth===0 ? 11 : (viewMonth-1);
+        if (monthNavAllowed(y,m)){ viewYear=y; viewMonth=m; render(); }
+      }
+      if (e.target.id==='next'){
+        const y = viewYear + (viewMonth===11 ? 1 : 0);
+        const m = viewMonth===11 ? 0 : (viewMonth+1);
+        if (monthNavAllowed(y,m)){ viewYear=y; viewMonth=m; render(); }
+      }
+      if (e.target.id==='btnToday'){
+        const now = clipNoon(new Date());
+        startDate = clampToAllowed(now);
+        endDate   = clampToAllowed(now);
+        render();
+        await writeParams();
+      }
+      if (e.target.id==='btnLast30'){
+        const now = clipNoon(new Date());
+        let start = clipNoon(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29));
+        startDate = clampToAllowed(start);
+        endDate   = clampToAllowed(now);
+        normalize();
+        viewYear = endDate.getFullYear(); viewMonth = endDate.getMonth();
+        render();
+        await writeParams();
+      }
+    });
+
+    
+    // --- helpers for MinMaxDate and settings param ---
+    async function getRangeFromParam(paramName){
+      try{
+        const dashboard = tableau.extensions.dashboardContent.dashboard;
+        const params = await dashboard.getParametersAsync();
+        const p = params.find(x => x.name === paramName);
+        const raw = p?.currentValue?.value;
+        if (!raw || typeof raw !== 'string') return [null, null];
+        const [loStr, hiStr] = raw.split('|').map(s => (s||'').trim());
+        const lo = new Date(loStr), hi = new Date(hiStr);
+        if (isNaN(+lo) || isNaN(+hi)) return [null, null];
+        lo.setHours(12,0,0,0); hi.setHours(12,0,0,0);
+        return [lo, hi];
+      } catch(e){ console.warn('getRangeFromParam failed', e); return [null, null]; }
+    }
+    async function readConfigFromParam(paramName){
+      try{
+        if (!paramName) return null;
+        const dashboard = tableau.extensions.dashboardContent.dashboard;
+        const params = await dashboard.getParametersAsync();
+        const p = params.find(x => x.name === paramName);
+        const raw = p?.currentValue?.value;
+        if (!raw) return null;
+        return JSON.parse(raw);
+      }catch(e){ console.warn('readConfigFromParam failed', e); return null; }
+    }
+    async function writeConfigToParam(paramName, cfg){
+      try{
+        if (!paramName) return;
+        const dashboard = tableau.extensions.dashboardContent.dashboard;
+        const params = await dashboard.getParametersAsync();
+        const p = params.find(x => x.name === paramName);
+        if (!p) return;
+        await p.changeValueAsync(JSON.stringify(cfg));
+      }catch(e){ console.warn('writeConfigToParam failed', e); }
+    }
+
+boot();
+  </script>
+</body>
+</html>
