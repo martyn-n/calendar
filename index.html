@@ -129,13 +129,12 @@
 
     function buildDOW(){ const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const c=$('#dow'); c.innerHTML=''; days.forEach(x=>{ const e=document.createElement('div'); e.className='dow'; e.textContent=x; c.appendChild(e); }); }
     function render(){
-      try {
       const d1 = new Date(viewYear, viewMonth, 1);
       let label = d1.toLocaleString(CFG.locale, {month:'long', year:'numeric'});
       if (CFG.monthLabelCase==='capitalize') label = label.charAt(0).toUpperCase()+label.slice(1);
       $('#monthLabel').textContent = label;
 
-      const grid=$('#grid'); if (!grid) return; grid.innerHTML='';
+      const grid=$('#grid'); grid.innerHTML='';
       const offset = ((d1.getDay() || 7) - 1);
       const days = daysInMonth(viewYear, viewMonth);
       for(let i=0;i<offset;i++){ const x=document.createElement('div'); x.className='cell'; x.style.visibility='hidden'; grid.appendChild(x); }
@@ -175,7 +174,6 @@
       }
       if (prevBtn) prevBtn.disabled = !monthAllowed(prevY, prevM);
       if (nextBtn) nextBtn.disabled = !monthAllowed(nextY, nextM);
-      } catch (e) { console.error('Render failed', e); }
 
 
       // prev/next
