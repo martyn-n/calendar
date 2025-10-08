@@ -51,7 +51,6 @@
     label { display:block; font-size:11px; color:#374151; margin:0 0 4px; }
     select { width:100%; box-sizing:border-box; border:1px solid #E5E7EB; border-radius:6px; padding:6px 8px; font-size:12px; background:#fff; }
     .panel .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
-    .hint { font-size:11px;color:#6B7280;margin-top:6px }
   </style>
 </head>
 <body>
@@ -70,10 +69,9 @@
         <button class="btn" id="btnLast30">Последние 30 дней</button>
       </div>
 
-      <!-- Встроенная панель настроек поверх календаря (как в index(3)) -->
+      <!-- Встроенная панель настроек поверх календаря (правки по ТЗ) -->
       <div class="panel" id="settingsPanel" aria-hidden="true">
-        <div style="font-size:12px; color:#6B7280;">Выберите параметры Tableau</div>
-        <div class="row">
+        <div class="row" style="margin-top:0">
           <div style="flex:1">
             <label for="startParamName">Start param</label>
             <select id="startParamName"></select>
@@ -83,7 +81,12 @@
             <select id="endParamName"></select>
           </div>
         </div>
-        <div class="hint">Эти параметры будут обновляться как начало и конец диапазона дат.</div>
+        <div class="row">
+          <div style="flex:1">
+            <label for="rangeParamName">Range param</label>
+            <select id="rangeParamName"></select>
+          </div>
+        </div>
         <div class="btns">
           <button class="btn" id="cancelCfg">Отмена</button>
           <button class="btn" id="saveCfg">Сохранить</button>
@@ -100,7 +103,7 @@
       try{ await loadScript('https://tableau.github.io/extensions-api/lib/tableau.extensions.1.latest.js'); }catch(_){}
     }
 
-    // --- defaults (из index(2), упрощены) ---
+    // --- defaults (из index(2), дополнены) ---
     const DEFAULTS = {
       startParamName: 'StartDate',
       endParamName:   'EndDate',
@@ -239,7 +242,7 @@
       } catch(e){ return [null, null]; }
     }
 
-    // --- Встроенные настройки (как в index(3)) ---
+    // --- Встроенные настройки (как в index(3), правки) ---
     function toggleSettings(show){
       const p=$('#settingsPanel'); if (!p) return;
       p.classList.toggle('show', !!show);
@@ -252,16 +255,21 @@
         const dash = tableau.extensions.dashboardContent.dashboard;
         const params = await dash.getParametersAsync();
         const names = params.map(p=>p.name);
-        const s=$('#startParamName'), e=$('#endParamName');
-        s.innerHTML=''; e.innerHTML='';
+
+        const s=$('#startParamName'), e=$('#endParamName'), r=$('#rangeParamName');
+        s.innerHTML=''; e.innerHTML=''; r.innerHTML='';
         for (const n of names){
           const o1=document.createElement('option'); o1.value=o1.textContent=n; s.appendChild(o1);
           const o2=document.createElement('option'); o2.value=o2.textContent=n; e.appendChild(o2);
+          const o3=document.createElement('option'); o3.value=o3.textContent=n; r.appendChild(o3);
         }
         if (names.includes(CFG.startParamName)) s.value=CFG.startParamName;
         if (names.includes(CFG.endParamName))   e.value=CFG.endParamName;
-        toggleSettings(true);
+        // default Range param: current CFG.rangeParamName, else MinMaxDate if present
+        if (names.includes(CFG.rangeParamName)) r.value=CFG.rangeParamName;
+        else if (names.includes('MinMaxDate'))  r.value='MinMaxDate';
       }catch(e){ console.warn('Не удалось получить параметры', e); }
+      toggleSettings(true);
     }
 
     // --- init ---
@@ -282,9 +290,9 @@
       startParam = params.find(p => p.name===CFG.startParamName);
       endParam   = params.find(p => p.name===CFG.endParamName);
 
-      // диапазон доступных дат: пытаемся взять из параметра, иначе из листа (как в index(2))
+      // диапазон доступных дат: теперь берём из выбираемого параметра
       const [pLo, pHi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
-      if (pLo && pHi){ allowMin = pLo; allowMax = pHi; }
+      if (pLo && pHi){ allowMin = clipNoon(pLo); allowMax = clipNoon(pHi); }
       else {
         const [wLo, wHi] = await getRangeFromWorksheet(CFG.sheetName, CFG.fieldName);
         allowMin = wLo ? clipNoon(wLo) : null;
@@ -315,17 +323,26 @@
       document.getElementById('cfg').addEventListener('click', openInlineSettings);
       document.getElementById('cancelCfg').addEventListener('click', ()=> toggleSettings(false));
       document.getElementById('saveCfg').addEventListener('click', async ()=>{
-        const sEl=$('#startParamName'), eEl=$('#endParamName');
+        const sEl=$('#startParamName'), eEl=$('#endParamName'), rEl=$('#rangeParamName');
         if (sEl && eEl){
           CFG.startParamName = sEl.value || CFG.startParamName;
           CFG.endParamName   = eEl.value || CFG.endParamName;
+          CFG.rangeParamName = rEl?.value || CFG.rangeParamName;
           await setSettings(CFG);
           try{
             const params2 = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
             startParam = params2.find(p => p.name===CFG.startParamName);
             endParam   = params2.find(p => p.name===CFG.endParamName);
+            // пересчитать допустимый диапазон по новому параметру
+            const [lo, hi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
+            allowMin = lo ? clipNoon(lo) : null;
+            allowMax = hi ? clipNoon(hi) : null;
+            // поджать текущие значения под новый диапазон
+            startDate = clampToAllowed(startDate);
+            endDate   = clampToAllowed(endDate);
           }catch{}
         }
+        render();
         toggleSettings(false);
       });
 
