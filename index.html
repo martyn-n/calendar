@@ -10,7 +10,9 @@
       --bg:#FAFAFA; --panel:#FFFFFF; --border:#E5E7EB;
       --ink:#333333; --muted:#6B7280; --accent:#2563EB;
       --range:#E0E7FF; --disabled:#9CA3AF;
-      --prev-range:#E5E7EB; --prev-accent:#9CA3AF;
+      /* lighter previous-period shades */
+      --prev-range:#F5F6F8;
+      --prev-accent:#E5E7EB;
     }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     .wrap { width:var(--w); height:var(--h); padding:var(--pad); box-sizing:border-box; }
@@ -38,9 +40,9 @@
     .start, .end { background: var(--accent); color:#fff; font-weight:700; }
     .start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     .end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
-    /* previous period styling (gray) */
+    /* previous period — lighter and subtle */
     .prev-range { background: var(--prev-range); }
-    .prev-start, .prev-end { background: var(--prev-accent); color:#fff; font-weight:700; }
+    .prev-start, .prev-end { background: var(--prev-range); font-weight:600; }
     .prev-start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     .prev-end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
     .cell.today::after { content:''; position:absolute; inset:2px; border:1px dashed var(--accent); border-radius:5px; pointer-events:none; }
@@ -50,7 +52,7 @@
     /* Inline settings panel (overlay; visible only в режиме Edit/Authoring) */
     .panel {
       position:absolute;
-      left:8px; right:8px; bottom:-12px; /* ниже на ~20px от исходной позиции */
+      left:8px; right:8px; bottom:-12px; /* ниже на ~20px от базовой позиции */
       background:#fff; border:1px solid var(--border);
       border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08);
       display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
@@ -62,14 +64,14 @@
     select, input[type="text"], input[type="number"] { width:100%; border:1px solid #E5E7EB; border-radius:6px; padding:4px 6px; font-size:12px; background:#fff; }
     input[type="number"] { -moz-appearance: textfield; }
     .panel .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
-    .panel .btns #saveCfg { background:#D4EEC8; border-color:#D4EEC8; } /* save button color per request */
+    .panel .btns #saveCfg { background:#D4EEC8; border-color:#D4EEC8; } /* save button tint */
     .toggle { display:flex; align-items:center; gap:8px; font-size:12px; color:#111827; margin-top:8px; }
 
     /* Buttons config list */
     .btncfg { margin-top:8px; border-top:1px dashed var(--border); padding-top:8px; }
     .btncfg h4 { margin:0 0 6px; font-size:12px; color:#111827; }
 
-    /* Ряды конфигурации: название шире, дни уже; квадратные +/- 20x20 */
+    /* Config rows: wider name, narrow days; +/- 20x20 */
     .btnrow { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; margin-bottom:6px; }
     .btnrow input.btnLabel { width:100%; height:24px; }
     .btnrow input.btnDays  { width:40px; height:24px; padding-right:4px; padding-left:6px; }
@@ -77,7 +79,7 @@
     .btnrow .del { background:#FEE2E2; border-color:#FCA5A5; }
     .btnrow .del:hover { filter:brightness(0.98); }
 
-    /* Строка добавления */
+    /* Add row */
     .btnadd { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; }
     .btnadd input#newBtnLabel { width:100%; height:24px; }
     .btnadd input#newBtnDays  { width:40px; height:24px; }
@@ -95,9 +97,7 @@
       </div>
       <div class="grid" id="dow"></div>
       <div class="grid" id="grid"></div>
-      <div class="foot" id="footBtns">
-        <!-- динамически -->
-      </div>
+      <div class="foot" id="footBtns"></div>
 
       <!-- Встроенная панель настроек поверх календаря -->
       <div class="panel" id="settingsPanel" aria-hidden="true">
@@ -122,7 +122,7 @@
           <label for="showPrevPeriod" style="margin:0;">Предыдущий период</label>
         </div>
 
-        <!-- Конфиг быстрых кнопок -->
+        <!-- Пресеты -->
         <div class="btncfg">
           <h4>Пресеты (последние N дней)</h4>
           <div id="btnList"></div>
@@ -142,14 +142,14 @@
   </div>
 
   <script>
-    // --- loader (из index(2)) ---
+    // --- loader ---
     const loadScript = (src) => new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res(src); s.onerror=()=>rej(new Error('Fail '+src)); document.head.appendChild(s); });
     async function ensureAPI(){
       try{ await loadScript('./tableau.extensions.1.latest.js'); if (window.tableau && tableau.extensions) return; }catch(_){}
       try{ await loadScript('https://tableau.github.io/extensions-api/lib/tableau.extensions.1.latest.js'); }catch(_){}
     }
 
-    // --- defaults (из index(2), дополнены) ---
+    // --- defaults ---
     const DEFAULTS = {
       startParamName: 'StartDate',
       endParamName:   'EndDate',
@@ -157,10 +157,8 @@
       fieldName:      'dt',
       rangeParamName: 'MinMaxDate',
       settingsParamName: '',
-      showToday:      true,
-      showLast30:     true,
       showPrevPeriod: false,
-      disableMonthNavOutside: true,
+      disableMonthNavOutside: true, // ignored now (nav always allowed)
       initialPreset:  'params', // 'params' | 'today' | 'last30'
       locale:         'ru-RU',
       monthLabelCase: 'capitalize', // or 'none'
@@ -178,17 +176,25 @@
       ]
     };
 
-    // --- helpers (из index(2)) ---
+    // --- cached DOM refs ---
+    const DOW = document.getElementById('dow');
+    const GRID = document.getElementById('grid');
+    const FOOT = document.getElementById('footBtns');
+    const MONTH = document.getElementById('monthLabel');
+    const BTN_PREV = document.getElementById('prev');
+    const BTN_NEXT = document.getElementById('next');
+    const BTN_CFG  = document.getElementById('cfg');
+
+    // --- helpers ---
     const $ = (q)=>document.querySelector(q);
     function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
-    function sameDay(a,b){ return a && b && a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
     function applyTheme(cfg){
       document.documentElement.style.setProperty('--bg', cfg.styles.pageBg);
       document.documentElement.style.setProperty('--panel', cfg.styles.panelBg);
       document.documentElement.style.setProperty('--ink', cfg.styles.text);
       document.documentElement.style.setProperty('--accent', cfg.styles.accent);
       document.documentElement.style.setProperty('--border', cfg.styles.border);
-      document.querySelector('.foot').style.marginTop = (cfg.buttonsMarginTopPx||0) + 'px';
+      FOOT.style.marginTop = (cfg.buttonsMarginTopPx||0) + 'px';
     }
     function getSettings(){
       try{
@@ -197,10 +203,7 @@
         const j = JSON.parse(raw);
         const merged = {...DEFAULTS, ...j, styles: {...DEFAULTS.styles, ...(j.styles||{})}};
         if (!Array.isArray(merged.quickButtons)){
-          const qb=[];
-          if (merged.showToday) qb.push({label:'Сегодня', days:1});
-          if (merged.showLast30) qb.push({label:'Последние 30 дней', days:30});
-          merged.quickButtons = qb.length ? qb : [...DEFAULTS.quickButtons];
+          merged.quickButtons = [...DEFAULTS.quickButtons];
         }
         merged.quickButtons = merged.quickButtons
           .map(b => ({label: String(b.label||'').trim() || 'Кнопка', days: Math.max(1, parseInt(b.days||1, 10)||1)}));
@@ -216,112 +219,123 @@
 
     // --- core state ---
     let CFG = {...DEFAULTS};
-    let startParam=null, endParam=null, startDate=null, endDate=null, allowMin=null, allowMax=null, viewYear, viewMonth;
+    let startParam=null, endParam=null;
+    let startDate=null, endDate=null;
+    let allowMin=null, allowMax=null, allowMinTs=null, allowMaxTs=null;
+    let viewYear, viewMonth;
 
-    function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
-    function inAllowed(d){ const t=+clipNoon(d); if (allowMin && t<+allowMin) return false; if (allowMax && t>+allowMax) return false; return true; }
-    function clampToAllowed(d){ if (!d) return d; const x=clipNoon(d); if (allowMin && x<allowMin) return new Date(allowMin); if (allowMax && x>allowMax) return new Date(allowMax); return x; }
-    function monthNavAllowed(y,m){ return true; } // навигация всегда разрешена
+    function setAllowedRange(lo, hi){
+      allowMin = lo ? clipNoon(lo) : null;
+      allowMax = hi ? clipNoon(hi) : null;
+      allowMinTs = allowMin ? +allowMin : null;
+      allowMaxTs = allowMax ? +allowMax : null;
+    }
+    function inAllowed(d){ const t=+(d instanceof Date ? clipNoon(d) : new Date(d)); if (allowMinTs!=null && t<allowMinTs) return false; if (allowMaxTs!=null && t>allowMaxTs) return false; return true; }
+    function clampToAllowed(d){ if (!d) return d; const t=+(d instanceof Date ? clipNoon(d) : new Date(d)); if (allowMinTs!=null && t<allowMinTs) return new Date(allowMinTs); if (allowMaxTs!=null && t>allowMaxTs) return new Date(allowMaxTs); return new Date(t); }
 
-    function buildDOW(){ const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const c=$('#dow'); c.innerHTML=''; days.forEach(x=>{ const e=document.createElement('div'); e.className='dow'; e.textContent=x; c.appendChild(e); }); }
+    function buildDOW(){
+      const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+      DOW.innerHTML='';
+      const frag=document.createDocumentFragment();
+      for(const x of days){ const e=document.createElement('div'); e.className='dow'; e.textContent=x; frag.appendChild(e); }
+      DOW.appendChild(frag);
+    }
 
     function renderFooterButtons(){
-      const box = document.getElementById('footBtns');
-      if (!box) return;
-      box.innerHTML='';
+      FOOT.innerHTML='';
+      const frag=document.createDocumentFragment();
       (CFG.quickButtons||[]).forEach((b, idx)=>{
         const btn = document.createElement('button');
         btn.className='btn';
         btn.textContent = b.label;
-        btn.setAttribute('data-days', String(Math.max(1, parseInt(b.days||1,10)||1)));
-        btn.setAttribute('data-idx', String(idx));
-        box.appendChild(btn);
+        btn.dataset.days = String(Math.max(1, parseInt(b.days||1,10)||1));
+        btn.dataset.idx = String(idx);
+        frag.appendChild(btn);
       });
+      FOOT.appendChild(frag);
     }
 
     function render(){
       const d1 = new Date(viewYear, viewMonth, 1);
       let label = d1.toLocaleString(CFG.locale, {month:'long', year:'numeric'});
       if (CFG.monthLabelCase==='capitalize') label = label.charAt(0).toUpperCase()+label.slice(1);
-      $('#monthLabel').textContent = label;
+      MONTH.textContent = label;
 
-      const grid=$('#grid'); if (!grid) return; grid.innerHTML='';
-      const offset = ((d1.getDay() || 7) - 1);
-      const days = daysInMonth(viewYear, viewMonth);
-      for(let i=0;i<offset;i++){ const x=document.createElement('div'); x.className='cell'; x.style.visibility='hidden'; grid.appendChild(x); }
-      const today = clipNoon(new Date());
+      GRID.innerHTML='';
+      const frag=document.createDocumentFragment();
+      const dow = d1.getDay() || 7;
+      const offset = dow - 1;
+      for(let i=0;i<offset;i++){ const x=document.createElement('div'); x.className='cell'; x.style.visibility='hidden'; frag.appendChild(x); }
 
-      // compute previous period boundaries if needed
-      let prevStart=null, prevEnd=null;
+      const days = new Date(viewYear, viewMonth+1, 0).getDate();
+      const today = clipNoon(new Date()); const todayTs=+today;
+
+      // prev period boundaries (if enabled)
+      let prevStart=null, prevEnd=null, prevStartTs=null, prevEndTs=null;
       if (CFG.showPrevPeriod && startDate && endDate){
-        const diffDays = Math.round((+endDate - +startDate) / 86400000); // (End - Start) in days
-        prevEnd = clipNoon(new Date(startDate)); prevEnd.setDate(prevEnd.getDate() - 1);
-        prevStart = clipNoon(new Date(startDate)); prevStart.setDate(prevStart.getDate() - diffDays - 1);
+        const diffDays = Math.round((+endDate - +startDate) / 86400000);
+        prevEnd = clipNoon(new Date(startDate)); prevEnd.setDate(prevEnd.getDate() - 1); prevEndTs=+prevEnd;
+        prevStart = clipNoon(new Date(startDate)); prevStart.setDate(prevStart.getDate() - diffDays - 1); prevStartTs=+prevStart;
       }
 
       for(let d=1; d<=days; d++){
-        const dt=clipNoon(new Date(viewYear, viewMonth, d));
-        const el=document.createElement('div'); el.className='cell'; el.textContent=d;
-        const disabled = !inAllowed(dt);
+        const dt=clipNoon(new Date(viewYear, viewMonth, d)); const ts=+dt;
+        const el=document.createElement('div'); el.className='cell'; el.textContent=d; el.dataset.ts=String(ts);
+        const disabled = !inAllowed(ts);
         if (disabled) { el.classList.add('disabled'); el.setAttribute('aria-disabled','true'); }
-        if (sameDay(dt, today)) el.classList.add('today');
-        el.addEventListener('click', ()=>onPick(dt, disabled));
+        if (ts===todayTs) el.classList.add('today');
 
         // current selection
         if (!disabled){
           if (startDate && endDate){
-            const t=+dt, a=+startDate, b=+endDate;
-            if (t>a && t<b) el.classList.add('in-range');
-            if (t===a) el.classList.add('start');
-            if (t===b) el.classList.add('end');
-          } else if (startDate && +dt===+startDate) el.classList.add('start');
+            const a=+startDate, b=+endDate;
+            if (ts>a && ts<b) el.classList.add('in-range');
+            if (ts===a) el.classList.add('start');
+            if (ts===b) el.classList.add('end');
+          } else if (startDate && ts===+startDate) el.classList.add('start');
         }
 
-        // previous period shading (gray)
+        // previous period shading (subtle gray)
         if (!disabled && prevStart && prevEnd){
-          const t=+dt, a=+prevStart, b=+prevEnd;
-          if (t>a && t<b) el.classList.add('prev-range');
-          if (t===a) el.classList.add('prev-start');
-          if (t===b) el.classList.add('prev-end');
+          if (ts>prevStartTs && ts<prevEndTs) el.classList.add('prev-range');
+          if (ts===prevStartTs) el.classList.add('prev-start');
+          if (ts===prevEndTs) el.classList.add('prev-end');
         }
-
-        grid.appendChild(el);
+        frag.appendChild(el);
       }
+      GRID.appendChild(frag);
 
-      // стрелки всегда активны
-      const prevBtn=$('#prev'), nextBtn=$('#next');
-      if (prevBtn) prevBtn.disabled = false;
-      if (nextBtn) nextBtn.disabled = false;
+      // arrows always enabled
+      BTN_PREV.disabled = false; BTN_NEXT.disabled = false;
 
-      // динамические быстрые кнопки
       renderFooterButtons();
     }
 
     function normalize(){ if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate]; }
 
-    async function applyLastNDays(days){
-      const n = Math.max(1, parseInt(days||1,10)||1);
-      const now = clipNoon(new Date());
-      const start = clipNoon(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n-1)));
-      startDate = clampToAllowed(start);
-      endDate   = clampToAllowed(now);
-      normalize();
-      viewYear = endDate.getFullYear(); viewMonth = endDate.getMonth();
-      render();
-      await writeParams();
-    }
-
     async function writeParams(){
       if (!startParam || !endParam) return;
-      try{ if (startDate) await startParam.changeValueAsync(new Date(startDate)); if (endDate) await endParam.changeValueAsync(new Date(endDate)); }catch(_){}
+      try{
+        // write both at once (only after full range is chosen)
+        await Promise.all([
+          startParam.changeValueAsync(new Date(startDate)),
+          endParam.changeValueAsync(new Date(endDate))
+        ]);
+      }catch(_){}
     }
+
+    // On day pick: only update parameters AFTER second click
     function onPick(date, disabled){
       if (disabled || !inAllowed(date)) return;
-      if (!startDate || (startDate && endDate)) { startDate=clipNoon(date); endDate=null; }
-      else { endDate=clipNoon(date); normalize(); }
+      if (!startDate || (startDate && endDate)) {
+        // start new selection, do NOT write params yet
+        startDate=clipNoon(date); endDate=null;
+      } else {
+        endDate=clipNoon(date); normalize();
+        // write both params only once full range selected
+        writeParams();
+      }
       render();
-      if (startDate && !endDate) { if (startParam) startParam.changeValueAsync(new Date(startDate)).catch(()=>{}); }
-      if (startDate && endDate) writeParams();
     }
 
     async function getRangeFromWorksheet(sheetName, fieldName){
@@ -346,7 +360,6 @@
       } catch(e){ return [null, null]; }
     }
 
-    // --- Встроенные настройки ---
     function toggleSettings(show){
       const p=$('#settingsPanel'); if (!p) return;
       p.classList.toggle('show', !!show);
@@ -373,7 +386,7 @@
     async function openInlineSettings(){
       try{
         const isAuthoring = tableau.extensions?.environment?.mode === tableau.ExtensionMode.Authoring;
-        if (!isAuthoring) return; // Открываем только в режиме редактирования
+        if (!isAuthoring) return;
         const dash = tableau.extensions.dashboardContent.dashboard;
         const params = await dash.getParametersAsync();
         const names = params.map(p=>p.name);
@@ -394,10 +407,10 @@
         const chk = document.getElementById('showPrevPeriod');
         if (chk) chk.checked = !!CFG.showPrevPeriod;
 
-        // кнопки
+        // buttons
         loadButtonsToUI();
 
-        // обработчик "Добавить"
+        // add handler
         const addBtn = document.getElementById('addBtn');
         const newLabel = document.getElementById('newBtnLabel');
         const newDays  = document.getElementById('newBtnDays');
@@ -407,66 +420,55 @@
           document.getElementById('btnList').appendChild(makeBtnRow(label, days));
           newLabel.value=''; newDays.value='7';
         };
-
       }catch(e){ console.warn('Не удалось получить параметры', e); }
       toggleSettings(true);
     }
 
-    // --- init ---
     async function initInsideTableau(){
       CFG = getSettings();
-
-      // применяем тему
       applyTheme(CFG);
 
-      // показываем "шестерёнку" только в Authoring
       try{
         const isAuthoring = tableau.extensions?.environment?.mode === tableau.ExtensionMode.Authoring;
-        const gear = document.getElementById('cfg'); if (gear) gear.style.display = isAuthoring ? 'inline-block' : 'none';
+        if (isAuthoring) BTN_CFG.style.display = 'inline-block';
       }catch(_){}
 
-      // связка параметров
       const params = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
       startParam = params.find(p => p.name===CFG.startParamName);
       endParam   = params.find(p => p.name===CFG.endParamName);
 
-      // диапазон доступных дат: берём из выбираемого параметра
+      // allowed range from param or worksheet
       const [pLo, pHi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
-      if (pLo && pHi){ allowMin = clipNoon(pLo); allowMax = clipNoon(pHi); }
+      if (pLo && pHi){ setAllowedRange(pLo, pHi); }
       else {
         const [wLo, wHi] = await getRangeFromWorksheet(CFG.sheetName, CFG.fieldName);
-        allowMin = wLo ? clipNoon(wLo) : null;
-        allowMax = wHi ? clipNoon(wHi) : null;
+        setAllowedRange(wLo, wHi);
       }
 
-      // начальные значения
+      // initial values
       if (CFG.initialPreset === 'today'){
-        const now = clipNoon(new Date());
-        startDate = clampToAllowed(now);
-        endDate   = clampToAllowed(now);
+        const now = clipNoon(new Date()); startDate = clampToAllowed(now); endDate = clampToAllowed(now);
       } else if (CFG.initialPreset === 'last30'){
-        const now = clipNoon(new Date());
-        startDate = clampToAllowed(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 12));
-        endDate   = clampToAllowed(now);
+        const now = clipNoon(new Date()); startDate = clampToAllowed(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 12)); endDate = clampToAllowed(now);
       } else {
         const minV = startParam?.currentValue?.value ? clipNoon(new Date(startParam.currentValue.value)) : null;
         const maxV = endParam?.currentValue?.value ? clipNoon(new Date(endParam.currentValue.value)) : null;
         startDate = clampToAllowed(minV);
         endDate   = clampToAllowed(maxV);
       }
-      normalize();
+      if (!(startDate||endDate)){ const now=new Date(); startDate=clipNoon(now); endDate=clipNoon(now); }
+      if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate];
 
-      const base = startDate || endDate || (allowMin || clipNoon(new Date()));
+      const base = endDate || startDate || (allowMin || clipNoon(new Date()));
       viewYear=base.getFullYear(); viewMonth=base.getMonth();
 
-      // события
-      document.getElementById('cfg').addEventListener('click', openInlineSettings);
+      BTN_CFG.addEventListener('click', openInlineSettings);
       document.getElementById('cancelCfg').addEventListener('click', ()=> toggleSettings(false));
       document.getElementById('saveCfg').addEventListener('click', async ()=>{
         const sEl=$('#startParamName'), eEl=$('#endParamName'), rEl=$('#rangeParamName');
         const chk = document.getElementById('showPrevPeriod');
 
-        // собрать список кнопок из UI
+        // collect buttons
         const rows = Array.from(document.querySelectorAll('#btnList .btnrow'));
         const qb = rows.map(r=>{
           const label = (r.querySelector('.btnLabel')?.value || '').trim() || 'Кнопка';
@@ -485,20 +487,17 @@
           const params2 = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
           startParam = params2.find(p => p.name===CFG.startParamName);
           endParam   = params2.find(p => p.name===CFG.endParamName);
-          // пересчитать допустимый диапазон по новому параметру
           const [lo, hi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
-          allowMin = lo ? clipNoon(lo) : null;
-          allowMax = hi ? clipNoon(hi) : null;
-          // поджать текущие значения под новый диапазон
+          if (lo && hi) setAllowedRange(lo, hi);
+          // clamp current selection to new bounds
           startDate = clampToAllowed(startDate);
           endDate   = clampToAllowed(endDate);
         }catch{}
-
         render();
         toggleSettings(false);
       });
 
-      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, (ev)=>{
+      tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, ()=>{
         CFG = getSettings(); applyTheme(CFG); render();
       });
 
@@ -508,8 +507,7 @@
     async function boot(){
       await ensureAPI();
       if (!(window.tableau && tableau.extensions)){
-        // вне Tableau — предпросмотр
-        document.getElementById('cfg').addEventListener('click', ()=>alert('Откройте в Tableau, чтобы настраивать расширение.'));
+        BTN_CFG.addEventListener('click', ()=>alert('Откройте в Tableau, чтобы настраивать расширение.'));
         const now=new Date(); viewYear=now.getFullYear(); viewMonth=now.getMonth(); buildDOW(); render(); return;
       }
       try{
@@ -520,32 +518,44 @@
       }
     }
 
+    // --- event delegation (optimization) ---
     document.addEventListener('click', async (e)=>{
       if (e.target.id==='prev'){
         const y = viewYear + (viewMonth===0 ? -1 : 0);
         const m = viewMonth===0 ? 11 : (viewMonth-1);
         viewYear=y; viewMonth=m; render();
+        return;
       }
       if (e.target.id==='next'){
         const y = viewYear + (viewMonth===11 ? 1 : 0);
         const m = viewMonth===11 ? 0 : (viewMonth+1);
         viewYear=y; viewMonth=m; render();
+        return;
       }
-      // обработка быстрых кнопок
-      const btn = e.target.closest('#footBtns .btn');
-      if (btn && btn.dataset.days){
-        await applyLastNDays(btn.dataset.days);
+      // calendar cell click
+      const cell = e.target.closest('.cell');
+      if (cell && cell.dataset.ts){
+        if (!cell.classList.contains('disabled')){
+          onPick(new Date(Number(cell.dataset.ts)), false);
+        }
+        return;
       }
-      // совместимость со старыми статическими id
-      if (e.target.id==='btnToday'){
-        await applyLastNDays(1);
-      }
-      if (e.target.id==='btnLast30'){
-        await applyLastNDays(30);
+      // quick buttons
+      const qbtn = e.target.closest('#footBtns .btn');
+      if (qbtn && qbtn.dataset.days){
+        const n = Math.max(1, parseInt(qbtn.dataset.days||'1',10)||1);
+        const now = clipNoon(new Date());
+        const start = clipNoon(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (n-1)));
+        startDate = clampToAllowed(start);
+        endDate   = clampToAllowed(now);
+        viewYear = endDate.getFullYear(); viewMonth = endDate.getMonth();
+        render();
+        await writeParams(); // presets write both immediately
+        return;
       }
     });
 
-    // --- helpers for MinMaxDate and settings param (из index(2)) ---
+    // --- helpers for range param ---
     async function getRangeFromParam(paramName){
       try{
         const dashboard = tableau.extensions.dashboardContent.dashboard;
@@ -559,27 +569,6 @@
         lo.setHours(12,0,0,0); hi.setHours(12,0,0,0);
         return [lo, hi];
       } catch(e){ console.warn('getRangeFromParam failed', e); return [null, null]; }
-    }
-    async function readConfigFromParam(paramName){
-      try{
-        if (!paramName) return null;
-        const dashboard = tableau.extensions.dashboardContent.dashboard;
-        const params = await dashboard.getParametersAsync();
-        const p = params.find(x => x.name === paramName);
-        const raw = p?.currentValue?.value;
-        if (!raw) return null;
-        return JSON.parse(raw);
-      }catch(e){ console.warn('readConfigFromParam failed', e); return null; }
-    }
-    async function writeConfigToParam(paramName, cfg){
-      try{
-        if (!paramName) return;
-        const dashboard = tableau.extensions.dashboardContent.dashboard;
-        const params = await dashboard.getParametersAsync();
-        const p = params.find(x => x.name === paramName);
-        if (!p) return;
-        await p.changeValueAsync(JSON.stringify(cfg));
-      }catch(e){ console.warn('writeConfigToParam failed', e); }
     }
 
     boot();
