@@ -49,8 +49,11 @@
 
     /* Inline settings panel (overlay; visible only в режиме Edit/Authoring) */
     .panel {
-      position:absolute; inset:auto 8px 8px 8px; background:#fff; border:1px solid var(--border);
-      border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08); display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
+      position:absolute;
+      left:8px; right:8px; bottom:-12px; /* сдвиг панели НИЖЕ на ~20px (8px -> -12px) */
+      background:#fff; border:1px solid var(--border);
+      border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08);
+      display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
     }
     .panel.show { display:block; }
     .row { display:flex; gap:8px; margin-top:6px; }
@@ -64,11 +67,21 @@
     /* Buttons config list */
     .btncfg { margin-top:8px; border-top:1px dashed var(--border); padding-top:8px; }
     .btncfg h4 { margin:0 0 6px; font-size:12px; color:#111827; }
-    .btnrow { display:grid; grid-template-columns: 1fr 72px 64px; gap:6px; align-items:center; margin-bottom:6px; }
-    .btnrow .btn { height:24px; line-height:24px; font-size:11px; }
+
+    /* Изменили сетку: поле названия шире, поле дней уже в 2 раза, кнопка квадратная */
+    .btnrow { display:grid; grid-template-columns: 1fr 40px 28px; gap:6px; align-items:center; margin-bottom:6px; }
+    .btnrow input.btnLabel { width:100%; }
+    .btnrow input.btnDays  { width:40px; padding-right:4px; padding-left:6px; }
+    .btnrow .btn { height:28px; line-height:28px; font-size:14px; font-weight:700; padding:0; width:28px; min-width:28px; border-radius:6px; }
     .btnrow .del { background:#FEE2E2; border-color:#FCA5A5; }
     .btnrow .del:hover { filter:brightness(0.98); }
     .btnrow .add { background:#ECFDF5; border-color:#A7F3D0; }
+
+    /* Добавить строка */
+    .btnadd { display:grid; grid-template-columns: 1fr 40px 28px; gap:6px; align-items:center; }
+    .btnadd input#newBtnLabel { width:100%; }
+    .btnadd input#newBtnDays  { width:40px; }
+    .btnadd .btn#addBtn { height:28px; width:28px; min-width:28px; line-height:28px; font-size:16px; font-weight:700; padding:0; }
   </style>
 </head>
 <body>
@@ -113,10 +126,10 @@
         <div class="btncfg">
           <h4>Быстрые кнопки</h4>
           <div id="btnList"></div>
-          <div class="btnrow">
+          <div class="btnadd">
             <input type="text" id="newBtnLabel" placeholder="Название кнопки (например, Последние 7 дней)" />
             <input type="number" id="newBtnDays" min="1" value="7" />
-            <button class="btn add" id="addBtn">Добавить</button>
+            <button class="btn add" id="addBtn" aria-label="Добавить">+</button>
           </div>
         </div>
 
@@ -144,10 +157,10 @@
       fieldName:      'dt',
       rangeParamName: 'MinMaxDate',
       settingsParamName: '',
-      showToday:      true,   // оставлено для совместимости, не используется при quickButtons
-      showLast30:     true,   // оставлено для совместимости, не используется при quickButtons
-      showPrevPeriod: false,  // toggle previous period
-      disableMonthNavOutside: true,  // уже игнорируется (навигация всегда разрешена)
+      showToday:      true,
+      showLast30:     true,
+      showPrevPeriod: false,
+      disableMonthNavOutside: true,
       initialPreset:  'params', // 'params' | 'today' | 'last30'
       locale:         'ru-RU',
       monthLabelCase: 'capitalize', // or 'none'
@@ -159,7 +172,6 @@
         border:  '#E5E7EB'
       },
       buttonsMarginTopPx: 0,
-      // Новый список быстрых кнопок (по умолчанию — Сегодня и Последние 30)
       quickButtons: [
         { label: 'Сегодня', days: 1 },
         { label: 'Последние 30 дней', days: 30 }
@@ -185,13 +197,11 @@
         const j = JSON.parse(raw);
         const merged = {...DEFAULTS, ...j, styles: {...DEFAULTS.styles, ...(j.styles||{})}};
         if (!Array.isArray(merged.quickButtons)){
-          // back-compat с showToday/showLast30
           const qb=[];
           if (merged.showToday) qb.push({label:'Сегодня', days:1});
           if (merged.showLast30) qb.push({label:'Последние 30 дней', days:30});
           merged.quickButtons = qb.length ? qb : [...DEFAULTS.quickButtons];
         }
-        // привести days к числу >=1
         merged.quickButtons = merged.quickButtons
           .map(b => ({label: String(b.label||'').trim() || 'Кнопка', days: Math.max(1, parseInt(b.days||1, 10)||1)}));
         return merged;
@@ -347,7 +357,7 @@
       row.className='btnrow';
       const i1 = document.createElement('input'); i1.type='text'; i1.className='btnLabel'; i1.value = label || ''; i1.placeholder='Название';
       const i2 = document.createElement('input'); i2.type='number'; i2.className='btnDays'; i2.min='1'; i2.value = String(Math.max(1, parseInt(days||1,10)||1));
-      const del = document.createElement('button'); del.className='btn del'; del.textContent='Удалить';
+      const del = document.createElement('button'); del.className='btn del'; del.textContent='−'; del.setAttribute('aria-label','Удалить');
       del.addEventListener('click', ()=> row.remove());
       row.appendChild(i1); row.appendChild(i2); row.appendChild(del);
       return row;
@@ -526,7 +536,7 @@
       if (btn && btn.dataset.days){
         await applyLastNDays(btn.dataset.days);
       }
-      // прежние статические кнопки (на случай старых конфигов) — безопасно оставляем
+      // совместимость со старыми статическими id
       if (e.target.id==='btnToday'){
         await applyLastNDays(1);
       }
