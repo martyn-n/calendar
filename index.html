@@ -10,6 +10,7 @@
       --bg:#FAFAFA; --panel:#FFFFFF; --border:#E5E7EB;
       --ink:#333333; --muted:#6B7280; --accent:#2563EB;
       --range:#E0E7FF; --disabled:#9CA3AF;
+      --prev-range:#E5E7EB; --prev-accent:#9CA3AF;
     }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     .wrap { width:var(--w); height:var(--h); padding:var(--pad); box-sizing:border-box; }
@@ -37,6 +38,11 @@
     .start, .end { background: var(--accent); color:#fff; font-weight:700; }
     .start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     .end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
+    /* previous period styling (gray) */
+    .prev-range { background: var(--prev-range); }
+    .prev-start, .prev-end { background: var(--prev-accent); color:#fff; font-weight:700; }
+    .prev-start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
+    .prev-end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
     .cell.today::after { content:''; position:absolute; inset:2px; border:1px dashed var(--accent); border-radius:5px; pointer-events:none; }
     .foot { display:flex; gap:4px; justify-content:space-between; margin-top:0px; }
     .foot .btn { flex:1; font-size:10px; height:20px; line-height:20px; }
@@ -49,8 +55,10 @@
     .panel.show { display:block; }
     .row { display:flex; gap:8px; margin-top:6px; }
     label { display:block; font-size:11px; color:#374151; margin:0 0 4px; }
-    select { width:100%; box-sizing:border-box; border:1px solid #E5E7EB; border-radius:6px; padding:6px 8px; font-size:12px; background:#fff; }
+    select, input[type="checkbox"] { box-sizing:border-box; }
+    select { width:100%; border:1px solid #E5E7EB; border-radius:6px; padding:6px 8px; font-size:12px; background:#fff; }
     .panel .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+    .toggle { display:flex; align-items:center; gap:8px; font-size:12px; color:#111827; margin-top:8px; }
   </style>
 </head>
 <body>
@@ -69,7 +77,7 @@
         <button class="btn" id="btnLast30">Последние 30 дней</button>
       </div>
 
-      <!-- Встроенная панель настроек поверх календаря (правки по ТЗ) -->
+      <!-- Встроенная панель настроек поверх календаря -->
       <div class="panel" id="settingsPanel" aria-hidden="true">
         <div class="row" style="margin-top:0">
           <div style="flex:1">
@@ -86,6 +94,10 @@
             <label for="rangeParamName">Range param</label>
             <select id="rangeParamName"></select>
           </div>
+        </div>
+        <div class="toggle">
+          <input type="checkbox" id="showPrevPeriod" />
+          <label for="showPrevPeriod" style="margin:0;">Показывать предыдущий период</label>
         </div>
         <div class="btns">
           <button class="btn" id="cancelCfg">Отмена</button>
@@ -113,6 +125,7 @@
       settingsParamName: '',
       showToday:      true,
       showLast30:     true,
+      showPrevPeriod: false,         // NEW: toggle previous period
       disableMonthNavOutside: true,
       initialPreset:  'params', // 'params' | 'today' | 'last30'
       locale:         'ru-RU',
@@ -175,6 +188,15 @@
       const days = daysInMonth(viewYear, viewMonth);
       for(let i=0;i<offset;i++){ const x=document.createElement('div'); x.className='cell'; x.style.visibility='hidden'; grid.appendChild(x); }
       const today = clipNoon(new Date());
+
+      // compute previous period boundaries if needed
+      let prevStart=null, prevEnd=null;
+      if (CFG.showPrevPeriod && startDate && endDate){
+        const diffDays = Math.round((+endDate - +startDate) / 86400000); // (End - Start) in days
+        prevEnd = clipNoon(new Date(startDate)); prevEnd.setDate(prevEnd.getDate() - 1);
+        prevStart = clipNoon(new Date(startDate)); prevStart.setDate(prevStart.getDate() - diffDays - 1);
+      }
+
       for(let d=1; d<=days; d++){
         const dt=clipNoon(new Date(viewYear, viewMonth, d));
         const el=document.createElement('div'); el.className='cell'; el.textContent=d;
@@ -182,6 +204,8 @@
         if (disabled) { el.classList.add('disabled'); el.setAttribute('aria-disabled','true'); }
         if (sameDay(dt, today)) el.classList.add('today');
         el.addEventListener('click', ()=>onPick(dt, disabled));
+
+        // current selection
         if (!disabled){
           if (startDate && endDate){
             const t=+dt, a=+startDate, b=+endDate;
@@ -190,6 +214,15 @@
             if (t===b) el.classList.add('end');
           } else if (startDate && +dt===+startDate) el.classList.add('start');
         }
+
+        // previous period shading (gray)
+        if (!disabled && prevStart && prevEnd){
+          const t=+dt, a=+prevStart, b=+prevEnd;
+          if (t>a && t<b) el.classList.add('prev-range');
+          if (t===a) el.classList.add('prev-start');
+          if (t===b) el.classList.add('prev-end');
+        }
+
         grid.appendChild(el);
       }
       // footer visibility
@@ -242,7 +275,7 @@
       } catch(e){ return [null, null]; }
     }
 
-    // --- Встроенные настройки (как в index(3), правки) ---
+    // --- Встроенные настройки ---
     function toggleSettings(show){
       const p=$('#settingsPanel'); if (!p) return;
       p.classList.toggle('show', !!show);
@@ -265,9 +298,12 @@
         }
         if (names.includes(CFG.startParamName)) s.value=CFG.startParamName;
         if (names.includes(CFG.endParamName))   e.value=CFG.endParamName;
-        // default Range param: current CFG.rangeParamName, else MinMaxDate if present
         if (names.includes(CFG.rangeParamName)) r.value=CFG.rangeParamName;
         else if (names.includes('MinMaxDate'))  r.value='MinMaxDate';
+
+        // init toggle
+        const chk = document.getElementById('showPrevPeriod');
+        if (chk) chk.checked = !!CFG.showPrevPeriod;
       }catch(e){ console.warn('Не удалось получить параметры', e); }
       toggleSettings(true);
     }
@@ -324,10 +360,12 @@
       document.getElementById('cancelCfg').addEventListener('click', ()=> toggleSettings(false));
       document.getElementById('saveCfg').addEventListener('click', async ()=>{
         const sEl=$('#startParamName'), eEl=$('#endParamName'), rEl=$('#rangeParamName');
+        const chk = document.getElementById('showPrevPeriod');
         if (sEl && eEl){
           CFG.startParamName = sEl.value || CFG.startParamName;
           CFG.endParamName   = eEl.value || CFG.endParamName;
           CFG.rangeParamName = rEl?.value || CFG.rangeParamName;
+          CFG.showPrevPeriod = !!(chk && chk.checked);
           await setSettings(CFG);
           try{
             const params2 = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
