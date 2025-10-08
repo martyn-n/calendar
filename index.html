@@ -50,7 +50,7 @@
     /* Inline settings panel (overlay; visible only в режиме Edit/Authoring) */
     .panel {
       position:absolute;
-      left:8px; right:8px; bottom:-12px; /* сдвиг панели НИЖЕ на ~20px (8px -> -12px) */
+      left:8px; right:8px; bottom:-12px; /* ниже на ~20px от исходной позиции */
       background:#fff; border:1px solid var(--border);
       border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08);
       display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
@@ -59,29 +59,29 @@
     .row { display:flex; gap:8px; margin-top:6px; }
     label { display:block; font-size:11px; color:#374151; margin:0 0 4px; }
     select, input[type="checkbox"], input[type="text"], input[type="number"] { box-sizing:border-box; }
-    select, input[type="text"], input[type="number"] { width:100%; border:1px solid #E5E7EB; border-radius:6px; padding:6px 8px; font-size:12px; background:#fff; }
+    select, input[type="text"], input[type="number"] { width:100%; border:1px solid #E5E7EB; border-radius:6px; padding:4px 6px; font-size:12px; background:#fff; }
     input[type="number"] { -moz-appearance: textfield; }
     .panel .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+    .panel .btns #saveCfg { background:#D4EEC8; border-color:#D4EEC8; } /* save button color per request */
     .toggle { display:flex; align-items:center; gap:8px; font-size:12px; color:#111827; margin-top:8px; }
 
     /* Buttons config list */
     .btncfg { margin-top:8px; border-top:1px dashed var(--border); padding-top:8px; }
     .btncfg h4 { margin:0 0 6px; font-size:12px; color:#111827; }
 
-    /* Изменили сетку: поле названия шире, поле дней уже в 2 раза, кнопка квадратная */
-    .btnrow { display:grid; grid-template-columns: 1fr 40px 28px; gap:6px; align-items:center; margin-bottom:6px; }
-    .btnrow input.btnLabel { width:100%; }
-    .btnrow input.btnDays  { width:40px; padding-right:4px; padding-left:6px; }
-    .btnrow .btn { height:28px; line-height:28px; font-size:14px; font-weight:700; padding:0; width:28px; min-width:28px; border-radius:6px; }
+    /* Ряды конфигурации: название шире, дни уже; квадратные +/- 20x20 */
+    .btnrow { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; margin-bottom:6px; }
+    .btnrow input.btnLabel { width:100%; height:24px; }
+    .btnrow input.btnDays  { width:40px; height:24px; padding-right:4px; padding-left:6px; }
+    .btnrow .btn { height:20px; line-height:20px; font-size:14px; font-weight:700; padding:0; width:20px; min-width:20px; border-radius:6px; }
     .btnrow .del { background:#FEE2E2; border-color:#FCA5A5; }
     .btnrow .del:hover { filter:brightness(0.98); }
-    .btnrow .add { background:#ECFDF5; border-color:#A7F3D0; }
 
-    /* Добавить строка */
-    .btnadd { display:grid; grid-template-columns: 1fr 40px 28px; gap:6px; align-items:center; }
-    .btnadd input#newBtnLabel { width:100%; }
-    .btnadd input#newBtnDays  { width:40px; }
-    .btnadd .btn#addBtn { height:28px; width:28px; min-width:28px; line-height:28px; font-size:16px; font-weight:700; padding:0; }
+    /* Строка добавления */
+    .btnadd { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; }
+    .btnadd input#newBtnLabel { width:100%; height:24px; }
+    .btnadd input#newBtnDays  { width:40px; height:24px; }
+    .btnadd .btn#addBtn { height:20px; width:20px; min-width:20px; line-height:20px; font-size:16px; font-weight:700; padding:0; background:#ECFDF5; border-color:#A7F3D0; }
   </style>
 </head>
 <body>
@@ -119,12 +119,12 @@
         </div>
         <div class="toggle">
           <input type="checkbox" id="showPrevPeriod" />
-          <label for="showPrevPeriod" style="margin:0;">Показывать предыдущий период</label>
+          <label for="showPrevPeriod" style="margin:0;">Предыдущий период</label>
         </div>
 
         <!-- Конфиг быстрых кнопок -->
         <div class="btncfg">
-          <h4>Быстрые кнопки</h4>
+          <h4>Пресеты (последние N дней)</h4>
           <div id="btnList"></div>
           <div class="btnadd">
             <input type="text" id="newBtnLabel" placeholder="Название кнопки (например, Последние 7 дней)" />
