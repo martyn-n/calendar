@@ -125,8 +125,8 @@
       settingsParamName: '',
       showToday:      true,
       showLast30:     true,
-      showPrevPeriod: false,         // NEW: toggle previous period
-      disableMonthNavOutside: true,
+      showPrevPeriod: false,         // toggle previous period
+      disableMonthNavOutside: true,  // kept for compatibility but ignored for buttons
       initialPreset:  'params', // 'params' | 'today' | 'last30'
       locale:         'ru-RU',
       monthLabelCase: 'capitalize', // or 'none'
@@ -174,7 +174,7 @@
     function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
     function inAllowed(d){ const t=+clipNoon(d); if (allowMin && t<+allowMin) return false; if (allowMax && t>+allowMax) return false; return true; }
     function clampToAllowed(d){ if (!d) return d; const x=clipNoon(d); if (allowMin && x<allowMin) return new Date(allowMin); if (allowMax && x>allowMax) return new Date(allowMax); return x; }
-    function monthNavAllowed(y,m){ if (!CFG.disableMonthNavOutside) return true; const s=clipNoon(new Date(y,m,1)), e=clipNoon(new Date(y,m+1,0)); if (allowMin && e<allowMin) return false; if (allowMax && s>allowMax) return false; return true; }
+    function monthNavAllowed(y,m){ return true; } // navigation always allowed now
 
     function buildDOW(){ const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс']; const c=$('#dow'); c.innerHTML=''; days.forEach(x=>{ const e=document.createElement('div'); e.className='dow'; e.textContent=x; c.appendChild(e); }); }
     function render(){
@@ -229,14 +229,10 @@
       $('#btnToday').style.display = CFG.showToday ? 'flex' : 'none';
       $('#btnLast30').style.display = CFG.showLast30 ? 'flex' : 'none';
 
-      // prev/next allowed
+      // prev/next always enabled (allow browsing outside range)
       const prevBtn=$('#prev'), nextBtn=$('#next');
-      const prevY = viewYear + (viewMonth===0 ? -1 : 0);
-      const prevM = viewMonth===0 ? 11 : (viewMonth-1);
-      const nextY = viewYear + (viewMonth===11 ? 1 : 0);
-      const nextM = viewMonth===11 ? 0 : (viewMonth+1);
-      prevBtn.disabled = !monthNavAllowed(prevY, prevM);
-      nextBtn.disabled = !monthNavAllowed(nextY, nextM);
+      if (prevBtn) prevBtn.disabled = false;
+      if (nextBtn) nextBtn.disabled = false;
     }
     function normalize(){ if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate]; }
 
@@ -326,7 +322,7 @@
       startParam = params.find(p => p.name===CFG.startParamName);
       endParam   = params.find(p => p.name===CFG.endParamName);
 
-      // диапазон доступных дат: теперь берём из выбираемого параметра
+      // диапазон доступных дат: берём из выбираемого параметра
       const [pLo, pHi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
       if (pLo && pHi){ allowMin = clipNoon(pLo); allowMax = clipNoon(pHi); }
       else {
@@ -410,12 +406,12 @@
       if (e.target.id==='prev'){
         const y = viewYear + (viewMonth===0 ? -1 : 0);
         const m = viewMonth===0 ? 11 : (viewMonth-1);
-        if (monthNavAllowed(y,m)){ viewYear=y; viewMonth=m; render(); }
+        viewYear=y; viewMonth=m; render();
       }
       if (e.target.id==='next'){
         const y = viewYear + (viewMonth===11 ? 1 : 0);
         const m = viewMonth===11 ? 0 : (viewMonth+1);
-        if (monthNavAllowed(y,m)){ viewYear=y; viewMonth=m; render(); }
+        viewYear=y; viewMonth=m; render();
       }
       if (e.target.id==='btnToday'){
         const now = clipNoon(new Date());
