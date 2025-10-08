@@ -10,9 +10,9 @@
       --bg:#FAFAFA; --panel:#FFFFFF; --border:#E5E7EB;
       --ink:#333333; --muted:#6B7280; --accent:#2563EB;
       --range:#E0E7FF; --disabled:#9CA3AF;
-      /* lighter previous-period shades */
-      --prev-range:#F5F6F8;
-      --prev-accent:#E5E7EB;
+      /* previous period colors per request */
+      --prev-range:#F5F5F5;  /* interior */
+      --prev-edge:#E2E2E2;   /* first/last */
     }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     .wrap { width:var(--w); height:var(--h); padding:var(--pad); box-sizing:border-box; }
@@ -40,9 +40,9 @@
     .start, .end { background: var(--accent); color:#fff; font-weight:700; }
     .start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     .end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
-    /* previous period — lighter and subtle */
+    /* previous period styling */
     .prev-range { background: var(--prev-range); }
-    .prev-start, .prev-end { background: var(--prev-range); font-weight:600; }
+    .prev-start, .prev-end { background: var(--prev-edge); font-weight:600; }
     .prev-start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     .prev-end   { border-top-right-radius:8px; border-bottom-right-radius:8px; }
     .cell.today::after { content:''; position:absolute; inset:2px; border:1px dashed var(--accent); border-radius:5px; pointer-events:none; }
@@ -52,7 +52,7 @@
     /* Inline settings panel (overlay; visible only в режиме Edit/Authoring) */
     .panel {
       position:absolute;
-      left:8px; right:8px; bottom:-12px; /* ниже на ~20px от базовой позиции */
+      left:8px; right:8px; bottom:-12px; /* ниже на ~20px */
       background:#fff; border:1px solid var(--border);
       border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08);
       display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
@@ -64,14 +64,14 @@
     select, input[type="text"], input[type="number"] { width:100%; border:1px solid #E5E7EB; border-radius:6px; padding:4px 6px; font-size:12px; background:#fff; }
     input[type="number"] { -moz-appearance: textfield; }
     .panel .btns { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
-    .panel .btns #saveCfg { background:#D4EEC8; border-color:#D4EEC8; } /* save button tint */
+    .panel .btns #saveCfg { background:#D4EEC8; border-color:#D4EEC8; }
     .toggle { display:flex; align-items:center; gap:8px; font-size:12px; color:#111827; margin-top:8px; }
 
     /* Buttons config list */
     .btncfg { margin-top:8px; border-top:1px dashed var(--border); padding-top:8px; }
     .btncfg h4 { margin:0 0 6px; font-size:12px; color:#111827; }
 
-    /* Config rows: wider name, narrow days; +/- 20x20 */
+    /* Config rows */
     .btnrow { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; margin-bottom:6px; }
     .btnrow input.btnLabel { width:100%; height:24px; }
     .btnrow input.btnDays  { width:40px; height:24px; padding-right:4px; padding-left:6px; }
@@ -79,7 +79,6 @@
     .btnrow .del { background:#FEE2E2; border-color:#FCA5A5; }
     .btnrow .del:hover { filter:brightness(0.98); }
 
-    /* Add row */
     .btnadd { display:grid; grid-template-columns: 1fr 40px 20px; gap:6px; align-items:center; }
     .btnadd input#newBtnLabel { width:100%; height:24px; }
     .btnadd input#newBtnDays  { width:40px; height:24px; }
@@ -115,6 +114,13 @@
           <div style="flex:1">
             <label for="rangeParamName">Range param</label>
             <select id="rangeParamName"></select>
+          </div>
+          <div style="flex:1">
+            <label for="calendarLang">Язык календаря</label>
+            <select id="calendarLang">
+              <option value="ru">Русский</option>
+              <option value="en">English</option>
+            </select>
           </div>
         </div>
         <div class="toggle">
@@ -158,10 +164,8 @@
       rangeParamName: 'MinMaxDate',
       settingsParamName: '',
       showPrevPeriod: false,
-      disableMonthNavOutside: true, // ignored now (nav always allowed)
+      calendarLang: 'ru', // 'ru' | 'en'  (affects only calendar)
       initialPreset:  'params', // 'params' | 'today' | 'last30'
-      locale:         'ru-RU',
-      monthLabelCase: 'capitalize', // or 'none'
       styles: {
         pageBg:  '#FAFAFA',
         panelBg: '#FFFFFF',
@@ -186,6 +190,12 @@
     const BTN_CFG  = document.getElementById('cfg');
 
     // --- helpers ---
+    function getLocale(lang){ return lang === 'en' ? 'en-US' : 'ru-RU'; }
+    function getDOW(lang){
+      return lang === 'en'
+        ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+        : ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    }
     const $ = (q)=>document.querySelector(q);
     function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
     function applyTheme(cfg){
@@ -207,6 +217,7 @@
         }
         merged.quickButtons = merged.quickButtons
           .map(b => ({label: String(b.label||'').trim() || 'Кнопка', days: Math.max(1, parseInt(b.days||1, 10)||1)}));
+        if (!merged.calendarLang) merged.calendarLang = 'ru';
         return merged;
       }catch{ return {...DEFAULTS}; }
     }
@@ -234,7 +245,7 @@
     function clampToAllowed(d){ if (!d) return d; const t=+(d instanceof Date ? clipNoon(d) : new Date(d)); if (allowMinTs!=null && t<allowMinTs) return new Date(allowMinTs); if (allowMaxTs!=null && t>allowMaxTs) return new Date(allowMaxTs); return new Date(t); }
 
     function buildDOW(){
-      const days=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+      const days = getDOW(CFG.calendarLang);
       DOW.innerHTML='';
       const frag=document.createDocumentFragment();
       for(const x of days){ const e=document.createElement('div'); e.className='dow'; e.textContent=x; frag.appendChild(e); }
@@ -257,8 +268,9 @@
 
     function render(){
       const d1 = new Date(viewYear, viewMonth, 1);
-      let label = d1.toLocaleString(CFG.locale, {month:'long', year:'numeric'});
-      if (CFG.monthLabelCase==='capitalize') label = label.charAt(0).toUpperCase()+label.slice(1);
+      let label = d1.toLocaleString(getLocale(CFG.calendarLang), {month:'long', year:'numeric'});
+      // capitalizing first letter for Russian; for English it's already capitalized
+      if (CFG.calendarLang === 'ru') label = label.charAt(0).toUpperCase()+label.slice(1);
       MONTH.textContent = label;
 
       GRID.innerHTML='';
@@ -270,7 +282,7 @@
       const days = new Date(viewYear, viewMonth+1, 0).getDate();
       const today = clipNoon(new Date()); const todayTs=+today;
 
-      // prev period boundaries (if enabled)
+      // prev period boundaries
       let prevStart=null, prevEnd=null, prevStartTs=null, prevEndTs=null;
       if (CFG.showPrevPeriod && startDate && endDate){
         const diffDays = Math.round((+endDate - +startDate) / 86400000);
@@ -295,7 +307,7 @@
           } else if (startDate && ts===+startDate) el.classList.add('start');
         }
 
-        // previous period shading (subtle gray)
+        // previous period shading (with distinct edge color)
         if (!disabled && prevStart && prevEnd){
           if (ts>prevStartTs && ts<prevEndTs) el.classList.add('prev-range');
           if (ts===prevStartTs) el.classList.add('prev-start');
@@ -305,9 +317,7 @@
       }
       GRID.appendChild(frag);
 
-      // arrows always enabled
       BTN_PREV.disabled = false; BTN_NEXT.disabled = false;
-
       renderFooterButtons();
     }
 
@@ -316,7 +326,6 @@
     async function writeParams(){
       if (!startParam || !endParam) return;
       try{
-        // write both at once (only after full range is chosen)
         await Promise.all([
           startParam.changeValueAsync(new Date(startDate)),
           endParam.changeValueAsync(new Date(endDate))
@@ -324,15 +333,12 @@
       }catch(_){}
     }
 
-    // On day pick: only update parameters AFTER second click
     function onPick(date, disabled){
       if (disabled || !inAllowed(date)) return;
       if (!startDate || (startDate && endDate)) {
-        // start new selection, do NOT write params yet
         startDate=clipNoon(date); endDate=null;
       } else {
         endDate=clipNoon(date); normalize();
-        // write both params only once full range selected
         writeParams();
       }
       render();
@@ -361,7 +367,7 @@
     }
 
     function toggleSettings(show){
-      const p=$('#settingsPanel'); if (!p) return;
+      const p=document.getElementById('settingsPanel'); if (!p) return;
       p.classList.toggle('show', !!show);
       p.setAttribute('aria-hidden', show?'false':'true');
     }
@@ -381,6 +387,9 @@
       (CFG.quickButtons||[]).forEach(b=>{
         list.appendChild(makeBtnRow(b.label, b.days));
       });
+      // set calendar lang selector
+      const langSel = document.getElementById('calendarLang');
+      if (langSel) langSel.value = CFG.calendarLang || 'ru';
     }
 
     async function openInlineSettings(){
@@ -391,7 +400,7 @@
         const params = await dash.getParametersAsync();
         const names = params.map(p=>p.name);
 
-        const s=$('#startParamName'), e=$('#endParamName'), r=$('#rangeParamName');
+        const s=document.getElementById('startParamName'), e=document.getElementById('endParamName'), r=document.getElementById('rangeParamName');
         s.innerHTML=''; e.innerHTML=''; r.innerHTML='';
         for (const n of names){
           const o1=document.createElement('option'); o1.value=o1.textContent=n; s.appendChild(o1);
@@ -403,11 +412,9 @@
         if (names.includes(CFG.rangeParamName)) r.value=CFG.rangeParamName;
         else if (names.includes('MinMaxDate'))  r.value='MinMaxDate';
 
-        // toggle previous period
         const chk = document.getElementById('showPrevPeriod');
         if (chk) chk.checked = !!CFG.showPrevPeriod;
 
-        // buttons
         loadButtonsToUI();
 
         // add handler
@@ -446,16 +453,10 @@
       }
 
       // initial values
-      if (CFG.initialPreset === 'today'){
-        const now = clipNoon(new Date()); startDate = clampToAllowed(now); endDate = clampToAllowed(now);
-      } else if (CFG.initialPreset === 'last30'){
-        const now = clipNoon(new Date()); startDate = clampToAllowed(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 12)); endDate = clampToAllowed(now);
-      } else {
-        const minV = startParam?.currentValue?.value ? clipNoon(new Date(startParam.currentValue.value)) : null;
-        const maxV = endParam?.currentValue?.value ? clipNoon(new Date(endParam.currentValue.value)) : null;
-        startDate = clampToAllowed(minV);
-        endDate   = clampToAllowed(maxV);
-      }
+      const minV = startParam?.currentValue?.value ? clipNoon(new Date(startParam.currentValue.value)) : null;
+      const maxV = endParam?.currentValue?.value ? clipNoon(new Date(endParam.currentValue.value)) : null;
+      startDate = clampToAllowed(minV);
+      endDate   = clampToAllowed(maxV);
       if (!(startDate||endDate)){ const now=new Date(); startDate=clipNoon(now); endDate=clipNoon(now); }
       if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate];
 
@@ -465,8 +466,9 @@
       BTN_CFG.addEventListener('click', openInlineSettings);
       document.getElementById('cancelCfg').addEventListener('click', ()=> toggleSettings(false));
       document.getElementById('saveCfg').addEventListener('click', async ()=>{
-        const sEl=$('#startParamName'), eEl=$('#endParamName'), rEl=$('#rangeParamName');
+        const sEl=document.getElementById('startParamName'), eEl=document.getElementById('endParamName'), rEl=document.getElementById('rangeParamName');
         const chk = document.getElementById('showPrevPeriod');
+        const langSel = document.getElementById('calendarLang');
 
         // collect buttons
         const rows = Array.from(document.querySelectorAll('#btnList .btnrow'));
@@ -480,25 +482,26 @@
         CFG.endParamName   = eEl?.value || CFG.endParamName;
         CFG.rangeParamName = rEl?.value || CFG.rangeParamName;
         CFG.showPrevPeriod = !!(chk && chk.checked);
+        CFG.calendarLang   = (langSel?.value === 'en') ? 'en' : 'ru';
         CFG.quickButtons   = qb.length ? qb : [...DEFAULTS.quickButtons];
 
         await setSettings(CFG);
+
         try{
           const params2 = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
           startParam = params2.find(p => p.name===CFG.startParamName);
           endParam   = params2.find(p => p.name===CFG.endParamName);
           const [lo, hi] = await getRangeFromParam(CFG.rangeParamName || 'MinMaxDate');
           if (lo && hi) setAllowedRange(lo, hi);
-          // clamp current selection to new bounds
           startDate = clampToAllowed(startDate);
           endDate   = clampToAllowed(endDate);
         }catch{}
-        render();
+        buildDOW(); render();
         toggleSettings(false);
       });
 
       tableau.extensions.settings.addEventListener(tableau.TableauEventType.SettingsChanged, ()=>{
-        CFG = getSettings(); applyTheme(CFG); render();
+        CFG = getSettings(); applyTheme(CFG); buildDOW(); render();
       });
 
       buildDOW(); render();
@@ -518,7 +521,7 @@
       }
     }
 
-    // --- event delegation (optimization) ---
+    // --- event delegation ---
     document.addEventListener('click', async (e)=>{
       if (e.target.id==='prev'){
         const y = viewYear + (viewMonth===0 ? -1 : 0);
@@ -550,7 +553,7 @@
         endDate   = clampToAllowed(now);
         viewYear = endDate.getFullYear(); viewMonth = endDate.getMonth();
         render();
-        await writeParams(); // presets write both immediately
+        await writeParams();
         return;
       }
     });
