@@ -10,8 +10,8 @@
       --bg:#FAFAFA; --panel:#FFFFFF; --border:#E5E7EB;
       --ink:#333333; --muted:#6B7280; --accent:#2563EB;
       --range:#E0E7FF; --disabled:#9CA3AF;
-      /* previous period colors per request */
-      --prev-range:#F4F4F4;  /* interior */
+      /* previous period colors */
+      --prev-range:#F2F2F2;  /* interior */
       --prev-edge:#E9E9E9;   /* first/last */
     }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
@@ -25,7 +25,7 @@
     }
     .btn.icon { width:22px; padding:0; }
     .btn:disabled { opacity:.5; cursor:not-allowed; }
-    .lbl { font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; text-align:center; }
+    .lbl { font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; text-align:center; cursor:pointer; }
     .gear { all:unset; width:22px; height:20px; line-height:20px; border:1px solid var(--border); background:#F3F4F6; border-radius:6px; text-align:center; cursor:pointer; display:none; }
     .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:var(--gap); }
     #dow { padding-top:4px; }
@@ -83,6 +83,24 @@
     .btnadd input#newBtnLabel { width:100%; height:24px; }
     .btnadd input#newBtnDays  { width:40px; height:24px; }
     .btnadd .btn#addBtn { height:20px; width:20px; min-width:20px; line-height:20px; font-size:16px; font-weight:700; padding:0; background:#ECFDF5; border-color:#A7F3D0; }
+
+    /* Month picker popup (wheel + click-to-select) */
+    .monthpicker {
+      position:absolute; left:8px; right:8px; top:26px;
+      background:#fff; border:1px solid var(--border); border-radius:10px;
+      box-shadow:0 6px 20px rgba(0,0,0,.08); padding:8px; display:none; z-index:12;
+    }
+    .monthpicker.show { display:block; }
+    .mp-head { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px; }
+    .mp-year { font-size:12px; font-weight:600; }
+    .mp-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
+    .mp-cell {
+      all:unset; display:flex; align-items:center; justify-content:center;
+      height:22px; line-height:22px; border:1px solid var(--border); border-radius:6px;
+      cursor:pointer; font-size:11px; background:#F9FAFB; text-align:center;
+    }
+    .mp-cell:hover { outline:2px solid rgba(37,99,235,.2); }
+    .mp-cell.active { background:var(--range); border-color:var(--accent); }
   </style>
 </head>
 <body>
@@ -90,15 +108,26 @@
     <div class="box">
       <div class="head">
         <button class="btn icon" id="prev">‹</button>
-        <div class="lbl" id="monthLabel"></div>
+        <div class="lbl" id="monthLabel" title="Прокрутите колёсико для смены месяца / Click — выбрать месяц"></div>
         <button class="btn icon" id="next">›</button>
         <button class="gear" id="cfg" title="Настройки">⚙︎</button>
       </div>
+
+      <!-- Month picker popup -->
+      <div class="monthpicker" id="monthPicker" aria-hidden="true">
+        <div class="mp-head">
+          <button class="btn icon" id="mpPrevY" aria-label="Prev year">‹</button>
+          <div class="mp-year" id="mpYearLabel">2025</div>
+          <button class="btn icon" id="mpNextY" aria-label="Next year">›</button>
+        </div>
+        <div class="mp-grid" id="mpGrid"></div>
+      </div>
+
       <div class="grid" id="dow"></div>
       <div class="grid" id="grid"></div>
       <div class="foot" id="footBtns"></div>
 
-      <!-- Встроенная панель настроек поверх календаря -->
+      <!-- Settings panel -->
       <div class="panel" id="settingsPanel" aria-hidden="true">
         <div class="row" style="margin-top:0">
           <div style="flex:1">
@@ -128,7 +157,6 @@
           <label for="showPrevPeriod" style="margin:0;">Предыдущий период</label>
         </div>
 
-        <!-- Пресеты -->
         <div class="btncfg">
           <h4>Пресеты (последние N дней)</h4>
           <div id="btnList"></div>
@@ -165,7 +193,7 @@
       settingsParamName: '',
       showPrevPeriod: false,
       calendarLang: 'ru', // 'ru' | 'en'  (affects only calendar)
-      initialPreset:  'params', // 'params' | 'today' | 'last30'
+      initialPreset:  'params',
       styles: {
         pageBg:  '#FAFAFA',
         panelBg: '#FFFFFF',
@@ -188,6 +216,9 @@
     const BTN_PREV = document.getElementById('prev');
     const BTN_NEXT = document.getElementById('next');
     const BTN_CFG  = document.getElementById('cfg');
+    const MP       = document.getElementById('monthPicker');
+    const MP_YEAR  = document.getElementById('mpYearLabel');
+    const MP_GRID  = document.getElementById('mpGrid');
 
     // --- helpers ---
     function getLocale(lang){ return lang === 'en' ? 'en-US' : 'ru-RU'; }
@@ -195,6 +226,11 @@
       return lang === 'en'
         ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
         : ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+    }
+    function monthName(i, lang, type='long'){
+      const locale=getLocale(lang);
+      const name=new Date(2000, i, 1).toLocaleString(locale, {month:type});
+      return (lang==='ru') ? (name.charAt(0).toUpperCase()+name.slice(1)) : name;
     }
     const $ = (q)=>document.querySelector(q);
     function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
@@ -234,6 +270,7 @@
     let startDate=null, endDate=null;
     let allowMin=null, allowMax=null, allowMinTs=null, allowMaxTs=null;
     let viewYear, viewMonth;
+    let mpYear = new Date().getFullYear();
 
     function setAllowedRange(lo, hi){
       allowMin = lo ? clipNoon(lo) : null;
@@ -269,7 +306,6 @@
     function render(){
       const d1 = new Date(viewYear, viewMonth, 1);
       let label = d1.toLocaleString(getLocale(CFG.calendarLang), {month:'long', year:'numeric'});
-      // capitalizing first letter for Russian; for English it's already capitalized
       if (CFG.calendarLang === 'ru') label = label.charAt(0).toUpperCase()+label.slice(1);
       MONTH.textContent = label;
 
@@ -307,7 +343,7 @@
           } else if (startDate && ts===+startDate) el.classList.add('start');
         }
 
-        // previous period shading (with distinct edge color)
+        // previous period shading
         if (!disabled && prevStart && prevEnd){
           if (ts>prevStartTs && ts<prevEndTs) el.classList.add('prev-range');
           if (ts===prevStartTs) el.classList.add('prev-start');
@@ -344,6 +380,44 @@
       render();
     }
 
+    // --- Month picker + wheel ---
+    function openMonthPicker(){
+      mpYear = viewYear;
+      MP_YEAR.textContent = String(mpYear);
+      MP.classList.add('show');
+      MP.setAttribute('aria-hidden', 'false');
+      buildMonthGrid();
+    }
+    function closeMonthPicker(){
+      MP.classList.remove('show');
+      MP.setAttribute('aria-hidden', 'true');
+    }
+    function toggleMonthPicker(){
+      if (MP.classList.contains('show')) closeMonthPicker(); else openMonthPicker();
+    }
+    function buildMonthGrid(){
+      MP_GRID.innerHTML='';
+      const frag=document.createDocumentFragment();
+      for (let m=0; m<12; m++){
+        const btn=document.createElement('button');
+        btn.className='mp-cell' + (m===viewMonth && mpYear===viewYear ? ' active' : '');
+        const shortLabel = monthName(m, CFG.calendarLang, 'short');
+        const fullLabel  = monthName(m, CFG.calendarLang, 'long');
+        btn.textContent = shortLabel;
+        btn.title = fullLabel;
+        btn.dataset.m = String(m);
+        frag.appendChild(btn);
+      }
+      MP_GRID.appendChild(frag);
+    }
+    function shiftMonth(delta){
+      let y=viewYear, m=viewMonth + delta;
+      while (m<0){ m+=12; y--; }
+      while (m>11){ m-=12; y++; }
+      viewYear=y; viewMonth=m; render();
+    }
+
+    // --- Settings helpers ---
     async function getRangeFromWorksheet(sheetName, fieldName){
       try{
         const dashboard = tableau.extensions.dashboardContent.dashboard;
@@ -368,6 +442,7 @@
 
     function toggleSettings(show){
       const p=document.getElementById('settingsPanel'); if (!p) return;
+      if (show) closeMonthPicker();
       p.classList.toggle('show', !!show);
       p.setAttribute('aria-hidden', show?'false':'true');
     }
@@ -387,7 +462,6 @@
       (CFG.quickButtons||[]).forEach(b=>{
         list.appendChild(makeBtnRow(b.label, b.days));
       });
-      // set calendar lang selector
       const langSel = document.getElementById('calendarLang');
       if (langSel) langSel.value = CFG.calendarLang || 'ru';
     }
@@ -417,7 +491,6 @@
 
         loadButtonsToUI();
 
-        // add handler
         const addBtn = document.getElementById('addBtn');
         const newLabel = document.getElementById('newBtnLabel');
         const newDays  = document.getElementById('newBtnDays');
@@ -452,7 +525,7 @@
         setAllowedRange(wLo, wHi);
       }
 
-      // initial values
+      // initial values from params
       const minV = startParam?.currentValue?.value ? clipNoon(new Date(startParam.currentValue.value)) : null;
       const maxV = endParam?.currentValue?.value ? clipNoon(new Date(endParam.currentValue.value)) : null;
       startDate = clampToAllowed(minV);
@@ -505,24 +578,68 @@
       });
 
       buildDOW(); render();
+
+      // Wheel on month label
+      MONTH.addEventListener('wheel', (e)=>{
+        e.preventDefault();
+        const dir = (e.deltaY || 0) > 0 ? 1 : -1;
+        shiftMonth(dir);
+        if (MP.classList.contains('show')) { // keep picker year in sync
+          mpYear = viewYear; MP_YEAR.textContent = String(mpYear); buildMonthGrid();
+        }
+      }, {passive:false});
+
+      // Click to open month picker
+      MONTH.addEventListener('click', toggleMonthPicker);
     }
 
     async function boot(){
       await ensureAPI();
       if (!(window.tableau && tableau.extensions)){
         BTN_CFG.addEventListener('click', ()=>alert('Откройте в Tableau, чтобы настраивать расширение.'));
-        const now=new Date(); viewYear=now.getFullYear(); viewMonth=now.getMonth(); buildDOW(); render(); return;
+        const now=new Date(); viewYear=now.getFullYear(); viewMonth=now.getMonth(); buildDOW(); render();
+
+        // local-only wheel + picker
+        MONTH.addEventListener('wheel', (e)=>{ e.preventDefault(); const dir=(e.deltaY||0)>0?1:-1; shiftMonth(dir); }, {passive:false});
+        MONTH.addEventListener('click', toggleMonthPicker);
+        document.getElementById('mpPrevY').addEventListener('click', ()=>{ mpYear--; MP_YEAR.textContent=String(mpYear); buildMonthGrid(); });
+        document.getElementById('mpNextY').addEventListener('click', ()=>{ mpYear++; MP_YEAR.textContent=String(mpYear); buildMonthGrid(); });
+        MP_GRID.addEventListener('click', (e)=>{
+          const cell = e.target.closest('.mp-cell'); if (!cell) return;
+          const m = parseInt(cell.dataset.m||'0',10)||0;
+          viewMonth=m; viewYear=mpYear; render(); closeMonthPicker();
+        });
+        document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') closeMonthPicker(); });
+        document.addEventListener('click', (e)=>{
+          if (MP.classList.contains('show') && !MP.contains(e.target) && e.target!==MONTH) closeMonthPicker();
+        });
+        return;
       }
       try{
         await tableau.extensions.initializeAsync();
         await initInsideTableau();
+
+        // Month picker wiring (Tableau context)
+        document.getElementById('mpPrevY').addEventListener('click', ()=>{ mpYear--; MP_YEAR.textContent=String(mpYear); buildMonthGrid(); });
+        document.getElementById('mpNextY').addEventListener('click', ()=>{ mpYear++; MP_YEAR.textContent=String(mpYear); buildMonthGrid(); });
+        MP_GRID.addEventListener('click', (e)=>{
+          const cell = e.target.closest('.mp-cell'); if (!cell) return;
+          const m = parseInt(cell.dataset.m||'0',10)||0;
+          viewMonth=m; viewYear=mpYear; render(); closeMonthPicker();
+        });
+        document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') closeMonthPicker(); });
+        document.addEventListener('click', (e)=>{
+          if (MP.classList.contains('show') && !MP.contains(e.target) && e.target!==MONTH) closeMonthPicker();
+        });
+
       }catch(e){ console.error(e);
         const now=new Date(); viewYear=now.getFullYear(); viewMonth=now.getMonth(); buildDOW(); render();
       }
     }
 
-    // --- event delegation ---
+    // Event delegation for calendar + presets
     document.addEventListener('click', async (e)=>{
+      // prev/next month
       if (e.target.id==='prev'){
         const y = viewYear + (viewMonth===0 ? -1 : 0);
         const m = viewMonth===0 ? 11 : (viewMonth-1);
@@ -574,6 +691,7 @@
       } catch(e){ console.warn('getRangeFromParam failed', e); return [null, null]; }
     }
 
+    // Boot
     boot();
   </script>
 </body>
