@@ -11,7 +11,7 @@
       --ink:#333333; --muted:#6B7280; --accent:#2563EB;
       --range:#E0E7FF; --disabled:#9CA3AF;
       /* previous period colors */
-      --prev-range:#F4F4F4;  /* interior (updated) */
+      --prev-range:#F4F4F4;  /* interior */
       --prev-edge:#E9E9E9;   /* first/last */
     }
     html, body { margin:0; padding:0; background:var(--bg); color:var(--ink); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
@@ -26,9 +26,9 @@
     .btn.icon { width:22px; padding:0; }
     .btn:disabled { opacity:.5; cursor:not-allowed; }
     .lbl { font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; text-align:center; cursor:pointer; }
-    /* Hover affordance for month label */
-    #monthLabel { display:inline-flex; align-items:center; padding:2px 10px; border-radius:7px; border:1px solid transparent; transition: background .12s ease, border-color .12s ease, padding .12s ease; }
-    #monthLabel:hover { background:#F8F8F8; border-color:var(--border); padding:3px 12px; }
+    /* Hover affordance for month label: exact height 20px to match arrow buttons */
+    #monthLabel { display:inline-flex; align-items:center; height:20px; line-height:20px; padding:0 8px; border-radius:7px; border:1px solid transparent; transition: background .12s ease, border-color .12s ease, padding .12s ease; }
+    #monthLabel:hover { background:#F8F8F8; border-color:var(--border); padding:0 12px; } /* bigger horizontally; height unchanged */
     .gear { all:unset; width:22px; height:20px; line-height:20px; border:1px solid var(--border); background:#F3F4F6; border-radius:6px; text-align:center; cursor:pointer; display:none; }
     .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:var(--gap); }
     #dow { padding-top:4px; }
@@ -247,13 +247,13 @@
       }
     }
     function updateMonthLabelTitle(lang){
-      if (lang === 'en'){
-        MONTH.title = 'Click or Scroll to change the month';
-      } else {
-        MONTH.title = 'Нажмите или Прокрутите для смены месяца';
-      }
+      MONTH.title = (lang === 'en') ? 'Click or Scroll to change the month' : 'Нажмите или Прокрутите для смены месяца';
     }
     const $ = (q)=>document.querySelector(q);
+    const pad2 = (n)=> (n<10 ? '0'+n : ''+n);
+    const fmt = (d)=> `${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.${d.getFullYear()}`;
+    const fmtRange = (a,b)=> `${fmt(a)} - ${fmt(b)}`;
+
     function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
     function applyTheme(cfg){
       document.documentElement.style.setProperty('--bg', cfg.styles.pageBg);
@@ -293,7 +293,7 @@
     let viewYear, viewMonth;
     let mpYear = new Date().getFullYear();
 
-    // Wheel sensitivity control (with inverted mapping)
+    // Wheel sensitivity control (normal mapping: up -> previous, down -> next)
     let wheelAccum = 0;
     let lastWheelShift = 0;
     const WHEEL_THRESHOLD = 120;
@@ -354,9 +354,36 @@
         prevStart = clipNoon(new Date(startDate)); prevStart.setDate(prevStart.getDate() - diffDays - 1); prevStartTs=+prevStart;
       }
 
+      // Prepare tooltip text for cells
+      let tipText = '';
+      if (startDate){
+        const a = startDate;
+        const b = endDate ? endDate : startDate;
+        const sel = fmtRange(a,b);
+        if (CFG.calendarLang === 'en'){
+          if (CFG.showPrevPeriod && endDate){
+            const prev = fmtRange(prevStart, prevEnd);
+            tipText = `Current period: ${sel}
+Previous period: ${prev}`;
+          } else {
+            tipText = `Selected period: ${sel}`;
+          }
+        } else {
+          if (CFG.showPrevPeriod && endDate){
+            const prev = fmtRange(prevStart, prevEnd);
+            tipText = `Текущий период: ${sel}
+Предыдущий период: ${prev}`;
+          } else {
+            tipText = `Выбранный период: ${sel}`;
+          }
+        }
+      }
+
       for(let d=1; d<=days; d++){
         const dt=clipNoon(new Date(viewYear, viewMonth, d)); const ts=+dt;
         const el=document.createElement('div'); el.className='cell'; el.textContent=d; el.dataset.ts=String(ts);
+        if (tipText) el.title = tipText;
+
         const disabled = !inAllowed(ts);
         if (disabled) { el.classList.add('disabled'); el.setAttribute('aria-disabled','true'); }
         if (ts===todayTs) el.classList.add('today');
@@ -611,21 +638,18 @@
 
       buildDOW(); render();
 
-      // Wheel on month label with inverted mapping and reduced sensitivity
+      // Wheel on month label (up -> previous, down -> next) with threshold & cooldown
       MONTH.addEventListener('wheel', (e)=>{
         e.preventDefault();
-        // invert mapping: up(-) -> previous, down(+) -> next
-        wheelAccum += -(e.deltaY || 0);
+        wheelAccum += (e.deltaY || 0);
         const now = performance.now();
         if (now - lastWheelShift < WHEEL_COOLDOWN_MS) return;
         if (wheelAccum >= WHEEL_THRESHOLD) {
-          shiftMonth(+1); // accumulated as if down
-          lastWheelShift = now;
-          wheelAccum = 0;
+          shiftMonth(+1); // down -> next
+          lastWheelShift = now; wheelAccum = 0;
         } else if (wheelAccum <= -WHEEL_THRESHOLD) {
-          shiftMonth(-1); // accumulated as if up
-          lastWheelShift = now;
-          wheelAccum = 0;
+          shiftMonth(-1); // up -> previous
+          lastWheelShift = now; wheelAccum = 0;
         }
         if (MP.classList.contains('show')) {
           mpYear = viewYear; MP_YEAR.textContent = String(mpYear); buildMonthGrid();
@@ -645,7 +669,7 @@
         // Local-only wheel + picker
         MONTH.addEventListener('wheel', (e)=>{
           e.preventDefault();
-          wheelAccum += -(e.deltaY || 0);
+          wheelAccum += (e.deltaY || 0);
           const t = performance.now();
           if (t - lastWheelShift < WHEEL_COOLDOWN_MS) return;
           if (wheelAccum >= WHEEL_THRESHOLD) { shiftMonth(+1); lastWheelShift = t; wheelAccum = 0; }
