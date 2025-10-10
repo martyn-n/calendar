@@ -27,8 +27,8 @@
     .btn:disabled { opacity:.5; cursor:not-allowed; }
     .lbl { font-size:12px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; text-align:center; cursor:pointer; }
     /* Hover affordance for month label */
-    #monthLabel { padding:0 6px; border-radius:6px; border:1px solid transparent; transition: background .12s ease, border-color .12s ease; }
-    #monthLabel:hover { background:#F8F8F8; border-color:var(--border); }
+    #monthLabel { display:inline-flex; align-items:center; padding:2px 10px; border-radius:7px; border:1px solid transparent; transition: background .12s ease, border-color .12s ease, padding .12s ease; }
+    #monthLabel:hover { background:#F8F8F8; border-color:var(--border); padding:3px 12px; }
     .gear { all:unset; width:22px; height:20px; line-height:20px; border:1px solid var(--border); background:#F3F4F6; border-radius:6px; text-align:center; cursor:pointer; display:none; }
     .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap:var(--gap); }
     #dow { padding-top:4px; }
@@ -52,10 +52,10 @@
     .foot { display:flex; gap:4px; justify-content:space-between; margin-top:0px; flex-wrap:wrap; }
     .foot .btn { flex:1; font-size:10px; height:20px; line-height:20px; }
 
-    /* Inline settings panel (overlay; visible only в режиме Edit/Authoring) */
+    /* Inline settings panel (overlay) */
     .panel {
       position:absolute;
-      left:8px; right:8px; bottom:-12px; /* ниже на ~20px */
+      left:8px; right:8px; bottom:-12px;
       background:#fff; border:1px solid var(--border);
       border-radius:10px; padding:10px; box-shadow:0 6px 20px rgba(0,0,0,.08);
       display:none; z-index:10; max-height:calc(var(--h) - 16px); overflow:auto;
@@ -87,7 +87,7 @@
     .btnadd input#newBtnDays  { width:40px; height:24px; }
     .btnadd .btn#addBtn { height:20px; width:20px; min-width:20px; line-height:20px; font-size:16px; font-weight:700; padding:0; background:#ECFDF5; border-color:#A7F3D0; }
 
-    /* Month picker popup (wheel + click-to-select) */
+    /* Month picker popup */
     .monthpicker {
       position:absolute; left:8px; right:8px; top:26px;
       background:#fff; border:1px solid var(--border); border-radius:10px;
@@ -98,12 +98,16 @@
     .mp-year { font-size:12px; font-weight:600; }
     .mp-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
     .mp-cell {
-      all:unset; display:flex; align-items:center; justify-content:center;
+      all:unset; position:relative; display:flex; align-items:center; justify-content:center;
       height:22px; line-height:22px; border:1px solid var(--border); border-radius:6px;
-      cursor:pointer; font-size:11px; background:#F9FAFB; text-align:center;
+      cursor:pointer; font-size:11px; background:#F9FAFB; text-align:center; overflow:hidden;
     }
     .mp-cell:hover { outline:2px solid rgba(37,99,235,.2); }
     .mp-cell.active { background:var(--range); border-color:var(--accent); }
+    /* dashed outline for the CURRENT (real) month */
+    .mp-cell.current::after {
+      content:''; position:absolute; inset:2px; border:1px dashed var(--accent); border-radius:5px; pointer-events:none;
+    }
   </style>
 </head>
 <body>
@@ -111,7 +115,7 @@
     <div class="box">
       <div class="head">
         <button class="btn icon" id="prev">‹</button>
-        <div class="lbl" id="monthLabel" title="Прокрутите колёсико для смены месяца / Click — выбрать месяц"></div>
+        <div class="lbl" id="monthLabel"></div>
         <button class="btn icon" id="next">›</button>
         <button class="gear" id="cfg" title="Настройки">⚙︎</button>
       </div>
@@ -235,6 +239,20 @@
       const name=new Date(2000, i, 1).toLocaleString(locale, {month:type});
       return (lang==='ru') ? (name.charAt(0).toUpperCase()+name.slice(1)) : name;
     }
+    function monthShortName(i, lang){
+      if (lang === 'ru'){
+        return ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'][i] || '';
+      } else {
+        return new Date(2000, i, 1).toLocaleString('en-US', {month:'short'});
+      }
+    }
+    function updateMonthLabelTitle(lang){
+      if (lang === 'en'){
+        MONTH.title = 'Click or Scroll to change the month';
+      } else {
+        MONTH.title = 'Нажмите или Прокрутите для смены месяца';
+      }
+    }
     const $ = (q)=>document.querySelector(q);
     function clipNoon(d){ if (!d) return d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12,0,0,0); }
     function applyTheme(cfg){
@@ -275,11 +293,11 @@
     let viewYear, viewMonth;
     let mpYear = new Date().getFullYear();
 
-    // Wheel sensitivity control
+    // Wheel sensitivity control (with inverted mapping)
     let wheelAccum = 0;
     let lastWheelShift = 0;
-    const WHEEL_THRESHOLD = 120;    // require a meaningful scroll
-    const WHEEL_COOLDOWN_MS = 160;  // minimum time between month changes
+    const WHEEL_THRESHOLD = 120;
+    const WHEEL_COOLDOWN_MS = 160;
 
     function setAllowedRange(lo, hi){
       allowMin = lo ? clipNoon(lo) : null;
@@ -317,6 +335,7 @@
       let label = d1.toLocaleString(getLocale(CFG.calendarLang), {month:'long', year:'numeric'});
       if (CFG.calendarLang === 'ru') label = label.charAt(0).toUpperCase()+label.slice(1);
       MONTH.textContent = label;
+      updateMonthLabelTitle(CFG.calendarLang);
 
       GRID.innerHTML='';
       const frag=document.createDocumentFragment();
@@ -407,10 +426,14 @@
     function buildMonthGrid(){
       MP_GRID.innerHTML='';
       const frag=document.createDocumentFragment();
+      const now = new Date();
       for (let m=0; m<12; m++){
         const btn=document.createElement('button');
-        btn.className='mp-cell' + (m===viewMonth && mpYear===viewYear ? ' active' : '');
-        const shortLabel = monthName(m, CFG.calendarLang, 'short');
+        let cls='mp-cell';
+        if (m===viewMonth && mpYear===viewYear) cls+=' active';
+        if (m===now.getMonth() && mpYear===now.getFullYear()) cls+=' current';
+        btn.className=cls;
+        const shortLabel = monthShortName(m, CFG.calendarLang);
         const fullLabel  = monthName(m, CFG.calendarLang, 'long');
         btn.textContent = shortLabel;
         btn.title = fullLabel;
@@ -588,22 +611,23 @@
 
       buildDOW(); render();
 
-      // Wheel on month label with reduced sensitivity
+      // Wheel on month label with inverted mapping and reduced sensitivity
       MONTH.addEventListener('wheel', (e)=>{
         e.preventDefault();
-        wheelAccum += (e.deltaY || 0);
+        // invert mapping: up(-) -> previous, down(+) -> next
+        wheelAccum += -(e.deltaY || 0);
         const now = performance.now();
         if (now - lastWheelShift < WHEEL_COOLDOWN_MS) return;
         if (wheelAccum >= WHEEL_THRESHOLD) {
-          shiftMonth(+1);
+          shiftMonth(+1); // accumulated as if down
           lastWheelShift = now;
           wheelAccum = 0;
         } else if (wheelAccum <= -WHEEL_THRESHOLD) {
-          shiftMonth(-1);
+          shiftMonth(-1); // accumulated as if up
           lastWheelShift = now;
           wheelAccum = 0;
         }
-        if (MP.classList.contains('show')) { // keep picker year in sync
+        if (MP.classList.contains('show')) {
           mpYear = viewYear; MP_YEAR.textContent = String(mpYear); buildMonthGrid();
         }
       }, {passive:false});
@@ -621,11 +645,11 @@
         // Local-only wheel + picker
         MONTH.addEventListener('wheel', (e)=>{
           e.preventDefault();
-          wheelAccum += (e.deltaY || 0);
-          const now2 = performance.now();
-          if (now2 - lastWheelShift < WHEEL_COOLDOWN_MS) return;
-          if (wheelAccum >= WHEEL_THRESHOLD) { shiftMonth(+1); lastWheelShift = now2; wheelAccum = 0; }
-          else if (wheelAccum <= -WHEEL_THRESHOLD) { shiftMonth(-1); lastWheelShift = now2; wheelAccum = 0; }
+          wheelAccum += -(e.deltaY || 0);
+          const t = performance.now();
+          if (t - lastWheelShift < WHEEL_COOLDOWN_MS) return;
+          if (wheelAccum >= WHEEL_THRESHOLD) { shiftMonth(+1); lastWheelShift = t; wheelAccum = 0; }
+          else if (wheelAccum <= -WHEEL_THRESHOLD) { shiftMonth(-1); lastWheelShift = t; wheelAccum = 0; }
         }, {passive:false});
         MONTH.addEventListener('click', toggleMonthPicker);
         document.getElementById('mpPrevY').addEventListener('click', ()=>{ mpYear--; MP_YEAR.textContent=String(mpYear); buildMonthGrid(); });
